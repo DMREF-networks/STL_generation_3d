@@ -24,5 +24,5 @@ point_cloud = np.loadtxt(open("./<point_cloud_file_name>.csv", "rb"), delimiter=
 ```
 Customize the height and width of of the model by modifying the following in Line Number 58: <br>
 ```python
-beams.append(create_beam(start_point, end_point, width=<enter_value>, height=<enter_value>))
+beams.append(create_beam(start_point, end_point, width=<width_of_each_edge>, height=<height_of_the_edge_or_3D_model>))
 ```
