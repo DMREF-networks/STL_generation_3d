@@ -55,7 +55,7 @@ for edge in graph.edges():
     # Access coordinates directly from the point_cloud array
     start_point = point_cloud[start_idx]
     end_point = point_cloud[end_idx]
-    beams.append(create_beam(start_point, end_point, width=30, height=30))  # Adjust width and height as needed
+    beams.append(create_beam(start_point, end_point, width=30, height=30))  # Adjust width and height as needed, it should be proportional to the spread of the points.
 
 # Combine all beams into a single mesh
 mesh = trimesh.util.concatenate(beams)
