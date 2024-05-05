@@ -3,3 +3,4 @@ libpysal
 shapely
 trimesh
 scipy
+networkx
