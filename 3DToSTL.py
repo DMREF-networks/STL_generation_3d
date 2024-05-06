@@ -5,7 +5,7 @@ import math
 from scipy.io import loadmat
 
 """
-3D_to_STL_file.py
+3DToSTL.py
 
 This script processes "3D positional and force data from LAMMPS simulations" or "adjacency and positional data from MATLAB .mat" files to generate
 STL files. These STL files model the connections and positions in a 3D structure as beams based on provided
