@@ -70,7 +70,7 @@ process_data("mat", mat_file=mat_file, beam_diameter=beam_diameter, output_file=
 
 **Run the Python file using the command:** <br>
 ```bash
-python3 3DToSTL_file.py
+python3 3DToSTL.py
 ```
 
 
