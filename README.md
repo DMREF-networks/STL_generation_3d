@@ -55,7 +55,7 @@ process_data('lammps', position_file=position_file, force_file=force_file, beam_
 - Adjust *beam_diameter* to control the width of connection beams in the STL output.
 - Set the desired output file name with *output_file*.
   
-*Note:* Make sure to comment lines 182-184 if you only want to use the LAMMPS method.
+*Note:* Make sure to comment lines 181-183 if you only want to use the LAMMPS method.
 <br>
 
 **For MATLAB data, modify the following in Line Number 184 according to your needs:** <br>
@@ -66,7 +66,7 @@ process_data("mat", mat_file=mat_file, beam_diameter=beam_diameter, output_file=
 - Adjust *beam_diameter* to control the width of connection beams in the STL output.
 - Set the desired output file name with *output_file*.
 
-*Note:* Make sure to comment lines 176-178 if you only want to use the MATLAB method.
+*Note:* Make sure to comment lines 175-178 if you only want to use the MATLAB method.
 
 **Run the Python file using the command:** <br>
 ```bash
