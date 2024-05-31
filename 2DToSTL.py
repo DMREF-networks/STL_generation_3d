@@ -101,7 +101,7 @@ if not os.path.exists(csv_file_path):
         for i in range(len(triangle)):
             for j in range(i + 1, len(triangle)):
                 graph.add_edge(triangle[i], triangle[j])
-    print(graph)
+    # print(graph)
     write_stl(graph, point_cloud)
 else :   
     # Load the point cloud data
