@@ -114,9 +114,9 @@ def read_adjacency_matrix_from_mat(filename):
 
 def create_beam(start_point, end_point, beam_diameter):
     """Creates a cylinder mesh between two points to represent a beam."""
-    vector = np.array(end_point) - np.array(start_point)
-    length = np.linalg.norm(vector)  # Calculate the length of the vector
-    direction = vector / length  # Normalize vector to get the direction
+    direction_3d = np.array(end_point) - np.array(start_point)
+    length = np.linalg.norm(direction_3d)  # Calculate the length of the vector
+    direction_3d = direction_3d / length  # Normalize vector to get the direction
 
     # Create cylinder along z-axis with specified diameter and length
     beam = cylinder(radius=beam_diameter / 2, height=length, sections=32)
@@ -124,16 +124,17 @@ def create_beam(start_point, end_point, beam_diameter):
     # Translate to center the cylinder at the origin
     beam.apply_translation(-beam.centroid)
 
-    z_vector = np.array([0, 0, 1])  # Reference vector along the cylinder's axis
-    axis = np.cross(z_vector, direction)  # Axis for rotation
-    if np.allclose(axis, [0, 0, 0]):  # If parallel, use an arbitrary axis
-        axis = [0, 1, 0]
-    angle = np.arccos(np.dot(z_vector, direction))  # Angle for rotation
+    current_direction_z_vector = np.array([0, 0, 1])  # Reference vector along the cylinder's axis
+    rotation_axis = np.cross(current_direction_z_vector, direction_3d)  # Axis for rotation
+    if np.allclose(rotation_axis, [0, 0, 0]):  # If parallel, use an arbitrary axis
+        rotation_axis = [0, 1, 0]
+    rotation_angle = np.arccos(np.dot(current_direction_z_vector, direction_3d))  # Angle for rotation
 
     # Apply rotation and translation to align cylinder
-    beam.apply_transform(trimesh.transformations.rotation_matrix(angle, axis, point=beam.centroid))
-    midpoint = (np.array(start_point) + np.array(end_point)) / 2
-    beam.apply_translation(midpoint)
+    beam.apply_transform(trimesh.transformations.rotation_matrix(rotation_angle, rotation_axis, point=beam.centroid))
+
+    midpoint_3d = (np.array(start_point) + np.array(end_point)) / 2
+    beam.apply_translation(midpoint_3d)
     return beam
 
 
@@ -150,9 +151,9 @@ def write_stl(positions, adjacency_matrix, beam_diameter=0.05, output_file="outp
                 beams.append(beam)
 
     # Normal Beam Concatenation
-    combined_mesh = trimesh.util.concatenate(beams)
+    mesh = trimesh.util.concatenate(beams)
     # print(combined_mesh)
-    combined_mesh.export(output_file)
+    mesh.export(output_file)
 
 def process_data(input_type, position_file=None, force_file=None, mat_file=None, beam_diameter=0.05, output_file="output.stl"):
     """Determines processing strategy based on input type."""
@@ -172,10 +173,10 @@ def process_data(input_type, position_file=None, force_file=None, mat_file=None,
 
 
 # LAMMPS DATA
-position_path = './dump.position4'
-force_path = './dump.force4'
-beam_diameter = 0.25  # Modify as needed, this should be based on the spead of the points.
-process_data('lammps', position_file=position_path, force_file=force_path, beam_diameter=beam_diameter, output_file="lammps_to_stl.stl")
+# position_path = './dump.position4'
+# force_path = './dump.force4'
+# beam_diameter = 0.25  # Modify as needed, this should be based on the spead of the points.
+# process_data('lammps', position_file=position_path, force_file=force_path, beam_diameter=beam_diameter, output_file="lammps_to_stl.stl")
 
 # MATLAB DATA
 mat_file ="./Adjacency_Lattice1_240408.mat"
