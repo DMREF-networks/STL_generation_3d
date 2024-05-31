@@ -85,28 +85,55 @@ def write_stl(graph,point_cloud):
     # Export the mesh to an STL file for 3D printing
     mesh.export('network_3d_model.stl')
 
-csv_file_path = "./net101.csv"
+# csv_file_path = "./net101.csv"
 # Get clarification on num_points,area
-if not os.path.exists(csv_file_path):
-    # Generating random point cloud if CSV does not exist
-    num_points = 100
-    point_cloud = np.random.rand(num_points, 2) * 1000  # points within a 1000x1000 area
-    # Create Delaunay triangulation from the points
+
+def find_csv_files(directory='.'):
+    """Find CSV files in the specified directory"""
+    csv_files = [filename for filename in os.listdir(directory) if filename.endswith('.csv')]
+    return csv_files
+
+def create_graph_from_point_cloud(point_cloud):
+    """Generate a graph from point cloud using Delaunay triangulation"""
     delaunay = Delaunay(point_cloud)
-    # print("\nIndices of points forming the Delaunay triangles (simplices):")
-    # print(delaunay.simplices)
-    # Convert Delaunay edges into a NetworkX graph for beam creation
     graph = nx.Graph()
     for triangle in delaunay.simplices:
         for i in range(len(triangle)):
             for j in range(i + 1, len(triangle)):
                 graph.add_edge(triangle[i], triangle[j])
-    # print(graph)
-    write_stl(graph, point_cloud)
-else :   
-    # Load the point cloud data
-    point_cloud = np.loadtxt(open(csv_file_path, "rb"), delimiter=",")
-    # Generate Voronoi diagram (simulating Delaunay-like edges for the purpose of 3D modeling)
-    voronoi = Voronoi(point_cloud, criterion='rook', clip=sh.box(0, 0, 2000, 2000))
-    graph = voronoi.to_networkx()
-    write_stl(graph,point_cloud)
+    return graph
+
+def main():
+    csv_files = find_csv_files()
+
+    if not csv_files:
+        print("No CSV files found. Generating random point cloud.")
+        # generate_csv()
+        # Generating random point cloud if CSV does not exist
+        num_points = 100
+        point_cloud = np.random.rand(num_points, 2) * 1000  # points within a 1000x1000 area
+        graph = create_graph_from_point_cloud(point_cloud)
+        # Create Delaunay triangulation from the points
+        # delaunay = Delaunay(point_cloud)
+        # # print("\nIndices of points forming the Delaunay triangles (simplices):")
+        # # print(delaunay.simplices)
+        # # Convert Delaunay edges into a NetworkX graph for beam creation
+        # graph = nx.Graph()
+        # for triangle in delaunay.simplices:
+        #     for i in range(len(triangle)):
+        #         for j in range(i + 1, len(triangle)):
+        #             graph.add_edge(triangle[i], triangle[j])
+        # print(graph)
+        write_stl(graph, point_cloud)
+    else :   
+        print("Found CSV files:", csv_files)
+        csv_file_path = csv_files[0]  # Use the first found CSV file
+        # Load the point cloud data
+        point_cloud = np.loadtxt(open(csv_file_path, "rb"), delimiter=",")
+        # Generate Voronoi diagram (simulating Delaunay-like edges for the purpose of 3D modeling)
+        voronoi = Voronoi(point_cloud, criterion='rook', clip=sh.box(0, 0, 2000, 2000))
+        graph = voronoi.to_networkx()
+        write_stl(graph,point_cloud)
+
+if __name__ == "__main__":
+    main()

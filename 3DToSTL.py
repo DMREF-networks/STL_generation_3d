@@ -173,12 +173,12 @@ def process_data(input_type, position_file=None, force_file=None, mat_file=None,
 
 
 # LAMMPS DATA
-# position_path = './dump.position4'
-# force_path = './dump.force4'
-# beam_diameter = 0.25  # Modify as needed, this should be based on the spead of the points.
-# process_data('lammps', position_file=position_path, force_file=force_path, beam_diameter=beam_diameter, output_file="lammps_to_stl.stl")
+position_path = './dump.position4'
+force_path = './dump.force4'
+beam_diameter = 0.25  # Modify as needed, this should be based on the spead of the points.
+process_data('lammps', position_file=position_path, force_file=force_path, beam_diameter=beam_diameter, output_file="lammps_to_stl.stl")
 
 # MATLAB DATA
-mat_file ="./Adjacency_Lattice1_240408.mat"
-beam_diameter = 0.0004
-process_data("mat", mat_file=mat_file, beam_diameter=beam_diameter, output_file="mat_to_stl.stl")
+# mat_file ="./Adjacency_Lattice1_240408.mat"
+# beam_diameter = 0.0004
+# process_data("mat", mat_file=mat_file, beam_diameter=beam_diameter, output_file="mat_to_stl.stl")
