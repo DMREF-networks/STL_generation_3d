@@ -3,7 +3,7 @@ import trimesh
 from trimesh.creation import cylinder, icosphere
 import math
 from scipy.io import loadmat
-
+import matplotlib.pyplot as plt
 """
 3DToSTL.py
 
@@ -79,6 +79,7 @@ def read_force_file(filename):
                 if parts:
                     id1, id2 = int(parts[1]), int(parts[2])
                     fx, fy, fz = map(float, parts[3:6])
+                    # To find the force bw 2 points 
                     magnitude = math.sqrt(fx ** 2 + fy ** 2 + fz ** 2)
                     if magnitude > 0:
                         forces.append((id1, id2, magnitude))
@@ -101,16 +102,31 @@ def read_adjacency_matrix_from_mat(filename):
     """Extracts adjacency matrix and positions from a MATLAB .mat file."""
     try:
         data = loadmat(filename)
+        print(data)
         # Assuming the adjacency matrix is stored under the key 'adjacency'
         # You may need to adjust this key based on the actual content of your .mat file
         adjacency_matrix = data.get('adjacency', None)
         positions = data.get('newItr', None)
+        # print(positions)
         if adjacency_matrix is None or positions is None:
             raise ValueError("MAT file does not contain 'adjacency' or 'positions'.")
     except Exception as e:
         print(f"Error reading MAT file: {e}")
         return None, None
     return adjacency_matrix, positions
+
+# def create_triangle(radius):
+#     # Triangle vertices based on radius
+#     triangle_height = radius * np.sqrt(3)  # Equilateral triangle height
+#     triangle_vertices = np.array([
+#         [0, -radius, 0],  # Vertex at the middle of base
+#         [triangle_height, 0, 0],  # Vertex at the top of the triangle
+#         [0, radius, 0]  # Vertex at the other end of the base
+#     ])
+    
+#     # Create the triangle mesh
+#     return trimesh.Trimesh(vertices=triangle_vertices, faces=[[0, 1, 2]])
+
 
 def create_beam(start_point, end_point, beam_diameter):
     """Creates a cylinder mesh between two points to represent a beam."""
@@ -119,10 +135,29 @@ def create_beam(start_point, end_point, beam_diameter):
     direction_3d = direction_3d / length  # Normalize vector to get the direction
 
     # Create cylinder along z-axis with specified diameter and length
-    beam = cylinder(radius=beam_diameter / 2, height=length, sections=32)
+    beam = cylinder(radius=beam_diameter / 2, height=length, sections=64, capped=True)
+
+    # Create triangles
+    # triangle = create_triangle(beam_diameter / 2)
 
     # Translate to center the cylinder at the origin
     beam.apply_translation(-beam.centroid)
+
+    # Position triangles at both ends of the cylinder
+    # triangle_top = triangle.copy()
+    # triangle_bottom = triangle.copy()
+
+    # Position the top triangle
+    # triangle_top.apply_translation([0, 0, length / 2])
+    # rotation_matrix = trimesh.transformations.rotation_matrix(np.pi, [1, 0, 0], point=triangle_top.centroid)
+    # triangle_top.apply_transform(rotation_matrix)
+
+    # # Position the bottom triangle
+    # triangle_bottom.apply_translation([0, 0, -length / 2])
+
+    # Combine cylinder and triangles
+    beam = trimesh.util.concatenate(beam)
+    # beam = trimesh.util.concatenate([beam, triangle_top, triangle_bottom])
 
     current_direction_z_vector = np.array([0, 0, 1])  # Reference vector along the cylinder's axis
     rotation_axis = np.cross(current_direction_z_vector, direction_3d)  # Axis for rotation
@@ -138,7 +173,7 @@ def create_beam(start_point, end_point, beam_diameter):
     return beam
 
 
-def write_stl(positions, adjacency_matrix, beam_diameter=0.05, output_file="output.stl", is_one_indexed=True):
+def write_stl(positions, adjacency_matrix, beam_diameter=0.06, output_file="output.stl", is_one_indexed=True):
     """Generates an STL file from given positions and their adjacency matrix."""
     beams = []
     start_index = 1 if is_one_indexed else 0
@@ -152,6 +187,7 @@ def write_stl(positions, adjacency_matrix, beam_diameter=0.05, output_file="outp
 
     # Normal Beam Concatenation
     mesh = trimesh.util.concatenate(beams)
+    mesh.fill_holes()
     # print(combined_mesh)
     mesh.export(output_file)
 
@@ -166,6 +202,7 @@ def process_data(input_type, position_file=None, force_file=None, mat_file=None,
         write_stl(positions, adjacency_matrix, beam_diameter, output_file, is_one_indexed=True)
     elif input_type == 'mat':
         adjacency_matrix, positions = read_adjacency_matrix_from_mat(mat_file)
+        # plot_3D(positions)
         if adjacency_matrix is not None and positions is not None:
             write_stl(positions, adjacency_matrix, beam_diameter, output_file, is_one_indexed=False)
     else:
@@ -173,12 +210,12 @@ def process_data(input_type, position_file=None, force_file=None, mat_file=None,
 
 
 # LAMMPS DATA
-position_path = './dump.position4'
-force_path = './dump.force4'
-beam_diameter = 0.25  # Modify as needed, this should be based on the spead of the points.
-process_data('lammps', position_file=position_path, force_file=force_path, beam_diameter=beam_diameter, output_file="lammps_to_stl.stl")
+# position_path = './dump.position4'
+# force_path = './dump.force4'
+# beam_diameter = 0.25  # Modify as needed, this should be based on the spead of the points.
+# process_data('lammps', position_file=position_path, force_file=force_path, beam_diameter=beam_diameter, output_file="lammps_to_stl.stl")
 
 # MATLAB DATA
-# mat_file ="./Adjacency_Lattice1_240408.mat"
-# beam_diameter = 0.0004
-# process_data("mat", mat_file=mat_file, beam_diameter=beam_diameter, output_file="mat_to_stl.stl")
+mat_file ="./Adjacency_Lattice1_240408.mat"
+beam_diameter = 0.0004
+process_data("mat", mat_file=mat_file, beam_diameter=beam_diameter, output_file="mat_to_stl.stl")
