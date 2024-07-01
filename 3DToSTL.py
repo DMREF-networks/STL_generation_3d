@@ -3,6 +3,7 @@ import trimesh
 from trimesh.creation import cylinder, icosphere
 import math
 from scipy.io import loadmat
+from matplotlib import pyplot as plt
 
 """
 3DToSTL.py
@@ -13,7 +14,7 @@ data. This can be useful for visualizing complex networks or for simulations whe
 are studied.
 
 How to use:
-- Specify the input type ('lammps' for LAMMPS data or 'mat' for MATLAB data).
+- Specify the input type ('lammps' for LAMMPS data or 'mat' for MATLAB data or 'csv' for csv data).
 - Provide the required file paths:
   For LAMMPS: position file and force file.
   For MATLAB: .mat file containing the adjacency matrix and positions.
@@ -154,7 +155,7 @@ def write_stl(positions, adjacency_matrix, beam_diameter=0.05, output_file="outp
     # print(combined_mesh)
     combined_mesh.export(output_file)
 
-def process_data(input_type, position_file=None, force_file=None, mat_file=None, beam_diameter=0.05, output_file="output.stl"):
+def process_data(input_type, position_file=None, force_file=None, mat_file=None, beam_diameter=0.05, output_file="output.stl", adjacency_array=None, position_array=None):
     """Determines processing strategy based on input type."""
     '''lammps data is 1-indexed while matlab data is 0-indexed'''
 
@@ -163,14 +164,22 @@ def process_data(input_type, position_file=None, force_file=None, mat_file=None,
         forces = read_force_file(force_file)
         adjacency_matrix = create_adjacency_matrix(positions, forces)
         write_stl(positions, adjacency_matrix, beam_diameter, output_file, is_one_indexed=True)
+    
     elif input_type == 'mat':
         adjacency_matrix, positions = read_adjacency_matrix_from_mat(mat_file)
         if adjacency_matrix is not None and positions is not None:
             write_stl(positions, adjacency_matrix, beam_diameter, output_file, is_one_indexed=False)
+    
+    elif input_type == 'csv':
+        adjacency_matrix = np.genfromtxt(adjacency_array, delimiter=',')
+        positions = np.genfromtxt(position_array, delimiter=',')
+        if adjacency_matrix is not None and positions is not None:
+            write_stl(positions, adjacency_matrix, beam_diameter, output_file, is_one_indexed=False)
+    
     else:
         print("Invalid input type. Specify 'lammps' or 'mat'.")
 
-
+'''
 # LAMMPS DATA
 position_path = './dump.position4'
 force_path = './dump.force4'
@@ -181,3 +190,9 @@ process_data('lammps', position_file=position_path, force_file=force_path, beam_
 mat_file ="./Adjacency_Lattice1_240408.mat"
 beam_diameter = 0.0004
 process_data("mat", mat_file=mat_file, beam_diameter=beam_diameter, output_file="mat_to_stl.stl")
+'''
+# CSV DATA
+adjacency_file ="./PC00c000_64_3D-box_Cubic-lattice_Gabriel_URL_adj_35.csv"
+position_file = "./PC00c000_64_3D-box_Cubic-lattice_Gabriel_URL_xy_35.csv"
+beam_diameter = 0.0004
+process_data("csv", beam_diameter=beam_diameter, output_file="csv_to_stl.stl",adjacency_array=adjacency_file,position_array=position_file)
