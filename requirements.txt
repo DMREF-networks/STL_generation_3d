@@ -4,3 +4,4 @@ shapely
 trimesh
 scipy
 networkx
+matplotlib
