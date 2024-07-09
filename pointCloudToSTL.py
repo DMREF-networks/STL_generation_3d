@@ -1,27 +1,16 @@
-# --------------------------------------------------------------------------------
-# Author: Harikrishnan Venkatesh
-# Year: 2024
-# Description: Code that generates a 3D STL file with a configurable width and height option from a 2D Point Cloud file
-# --------------------------------------------------------------------------------
-
 import numpy as np
 from libpysal.weights import Voronoi
 import shapely.geometry as sh
 import trimesh
 from trimesh.creation import box
 import warnings
+import networkx as nx
+import argparse
+import os
 
 # Ignore future warnings
 warnings.filterwarnings("ignore", category=FutureWarning)
 
-# Load the point cloud data
-point_cloud = np.loadtxt(open("./net100.csv", "rb"), delimiter=",")
-
-# Generate Voronoi diagram (simulating Delaunay-like edges for the purpose of 3D modeling)
-voronoi = Voronoi(point_cloud, criterion='rook', clip=sh.box(0, 0, 2000, 2000))
-graph = voronoi.to_networkx()
-
-# Function to create a 3D beam between two points
 def create_beam(start, end, width=0.05, height=1.0):
     direction_2d = end - start
     length = np.linalg.norm(direction_2d)
@@ -47,21 +36,55 @@ def create_beam(start, end, width=0.05, height=1.0):
 
     return beam
 
-# Create beams for each edge in the graph
-beams = []
-for edge in graph.edges():
-    start_idx, end_idx = edge
-    # print(point_cloud[start_idx], point_cloud[end_idx])
-    # Access coordinates directly from the point_cloud array
-    start_point = point_cloud[start_idx]
-    end_point = point_cloud[end_idx]
-    beams.append(create_beam(start_point, end_point, width=30, height=30))  # Adjust width and height as needed, it should be proportional to the spread of the points.
+def main(adjacency_file, point_cloud_file, output_file, beam_width, beam_height):
+    # Load the point cloud data from CSV into a NumPy array
+    point_cloud = np.loadtxt(point_cloud_file, delimiter=',')
 
-# Combine all beams into a single mesh
-mesh = trimesh.util.concatenate(beams)
-mesh.process(validate=True)
-mesh.fill_holes()
-print("Is watertight:", mesh.is_watertight)
+    xmin = np.min(point_cloud[:, 1])
+    xmax = np.max(point_cloud[:, 1])
 
-# Export the mesh to an STL file for 3D printing
-mesh.export('network_3d_model.stl')
+    scale = 2000 / (xmax - xmin) 
+
+    point_cloud = point_cloud * scale
+
+    # Load adjacency matrix from CSV
+    adj_matrix = np.loadtxt(adjacency_file, delimiter=',').astype(np.int64)
+
+    # Create a graph from the adjacency matrix
+    graph = nx.from_numpy_array(adj_matrix)
+
+    # Create beams for each edge in the graph
+    beams = []
+    for edge in graph.edges():
+        start_idx, end_idx = edge
+        # Access coordinates directly from the point_cloud array
+        start_point = point_cloud[int(start_idx)]
+        end_point = point_cloud[int(end_idx)]
+        beams.append(create_beam(start_point, end_point, width=beam_width, height=beam_height))
+
+    # Combine all beams into a single mesh
+    mesh = trimesh.util.concatenate(beams)
+    mesh.process(validate=True)
+    mesh.fill_holes()
+    print("Is watertight:", mesh.is_watertight)
+
+    # Export the mesh to an STL file for 3D printing
+    mesh.export(output_file)
+    print(f"3D model saved as {output_file}")
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Generate 3D STL file from adjacency data and point cloud")
+    parser.add_argument("adjacency_file", help="Path to the adjacency matrix CSV file")
+    parser.add_argument("point_cloud_file", help="Path to the point cloud CSV file")
+    parser.add_argument("-o", "--output_file", help="Path for the output STL file (default: based on adjacency filename)")
+    parser.add_argument("--beam_width", type=float, default=30, help="Width of the beams (default: 30)")
+    parser.add_argument("--beam_height", type=float, default=30, help="Height of the beams (default: 30)")
+
+    args = parser.parse_args()
+
+    # Set default output file name if not provided
+    if args.output_file is None:
+        base_name = os.path.splitext(os.path.basename(args.adjacency_file))[0]
+        args.output_file = f"{base_name}_3d_model.stl"
+
+    main(args.adjacency_file, args.point_cloud_file, args.output_file, args.beam_width, args.beam_height)
