@@ -5,54 +5,16 @@ import math
 from scipy.io import loadmat
 from matplotlib import pyplot as plt
 
-"""
-3DToSTL.py
-
-This script processes "3D positional and force data from LAMMPS simulations" or "adjacency and positional data from MATLAB .mat" files to generate
-STL files. These STL files model the connections and positions in a 3D structure as beams based on provided
-data. This can be useful for visualizing complex networks or for simulations where mechanical interactions
-are studied.
-
-How to use:
-- Specify the input type ('lammps' for LAMMPS data or 'mat' for MATLAB data or 'csv' for csv data).
-- Provide the required file paths:
-  For LAMMPS: position file and force file.
-  For MATLAB: .mat file containing the adjacency matrix and positions.
-- Set the desired beam diameter and output file name.
-- Run the script to generate the STL file.
-
-Eg for LAMMPS:  process_data('lammps', position_file=position_file, force_file=force_file, beam_diameter=beam_diameter, output_file="lammps_to_stl.stl")
-Eg for Matlab:  process_data("mat", mat_file=mat_file, beam_diameter=beam_diameter, output_file="mat_to_stl.stl")
-
-Requirements:
-- numpy
-- trimesh
-- scipy
-
-Ensure you have the above Python packages installed before running the script.
-"""
-
 def plot_3D(positions):
     """Plots the 3D scatter plot for the positions given, make sure that positions is (n x 3)"""
-    # Unpack the positions data into separate lists for x, y, and z coordinates
     xs, ys, zs = zip(*positions)
-
-    # Create a new matplotlib figure and its axes
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
-
-    # Plot the data as a 3D scatter plot
     ax.scatter(xs, ys, zs)
-
-    # Set labels for each axis
     ax.set_xlabel('X Coordinate')
     ax.set_ylabel('Y Coordinate')
     ax.set_zlabel('Z Coordinate')
-
-    # Set the title of your plot
     plt.title('3D Plot of Positions')
-
-    # Finally, display the plot
     plt.show()
 
 def read_position_file(filename):
@@ -68,7 +30,6 @@ def read_position_file(filename):
     except Exception as e:
         print(f"Error reading position file: {e}")
     return positions
-
 
 def read_force_file(filename):
     """Reads force data from a LAMMPS dump file; each line should include ID1, ID2, fx, fy, and fz."""
@@ -87,23 +48,18 @@ def read_force_file(filename):
         print(f"Error reading force file: {e}")
     return forces
 
-
 def create_adjacency_matrix(positions, forces):
     """Generates a matrix showing the connection strength between points based on forces."""
     size = len(positions)
     matrix = np.zeros((size + 1, size + 1))
-    # Assuming particle IDs are 1-indexed and sequential.
     for id1, id2, magnitude in forces:
         matrix[id1, id2] = magnitude
     return matrix
-
 
 def read_adjacency_matrix_from_mat(filename):
     """Extracts adjacency matrix and positions from a MATLAB .mat file."""
     try:
         data = loadmat(filename)
-        # Assuming the adjacency matrix is stored under the key 'adjacency'
-        # You may need to adjust this key based on the actual content of your .mat file
         adjacency_matrix = data.get('adjacency', None)
         positions = data.get('newItr', None)
         if adjacency_matrix is None or positions is None:
@@ -116,32 +72,27 @@ def read_adjacency_matrix_from_mat(filename):
 def create_beam(start_point, end_point, beam_diameter):
     """Creates a cylinder mesh between two points to represent a beam."""
     vector = np.array(end_point) - np.array(start_point)
-    length = np.linalg.norm(vector)  # Calculate the length of the vector
-    direction = vector / length  # Normalize vector to get the direction
-
-    # Create cylinder along z-axis with specified diameter and length
+    length = np.linalg.norm(vector)
+    direction = vector / length
     beam = cylinder(radius=beam_diameter / 2, height=length, sections=32)
-
-    # Translate to center the cylinder at the origin
     beam.apply_translation(-beam.centroid)
-
-    z_vector = np.array([0, 0, 1])  # Reference vector along the cylinder's axis
-    axis = np.cross(z_vector, direction)  # Axis for rotation
-    if np.allclose(axis, [0, 0, 0]):  # If parallel, use an arbitrary axis
+    z_vector = np.array([0, 0, 1])
+    axis = np.cross(z_vector, direction)
+    if np.allclose(axis, [0, 0, 0]):
         axis = [0, 1, 0]
-    angle = np.arccos(np.dot(z_vector, direction))  # Angle for rotation
-
-    # Apply rotation and translation to align cylinder
+    angle = np.arccos(np.dot(z_vector, direction))
     beam.apply_transform(trimesh.transformations.rotation_matrix(angle, axis, point=beam.centroid))
     midpoint = (np.array(start_point) + np.array(end_point)) / 2
     beam.apply_translation(midpoint)
     return beam
 
-
 def write_stl(positions, adjacency_matrix, beam_diameter=0.05, output_file="output.stl", is_one_indexed=True):
     """Generates an STL file from given positions and their adjacency matrix."""
     beams = []
+    spheres = []
     start_index = 1 if is_one_indexed else 0
+
+    # Add beams
     for i in range(start_index, len(adjacency_matrix)):
         for j in range(i + 1, len(adjacency_matrix[i])):
             if adjacency_matrix[i, j] > 0:
@@ -150,49 +101,54 @@ def write_stl(positions, adjacency_matrix, beam_diameter=0.05, output_file="outp
                 beam = create_beam(start_point, end_point, beam_diameter)
                 beams.append(beam)
 
-    # Normal Beam Concatenation
-    combined_mesh = trimesh.util.concatenate(beams)
-    # print(combined_mesh)
+    # Add spheres at the junctions
+    if isinstance(positions, dict):
+        position_values = positions.values()
+    else:
+        position_values = positions
+    
+    for pos in position_values:
+        sphere = icosphere(radius=beam_diameter / 2)
+        sphere.apply_translation(pos[:3])
+        spheres.append(sphere)
+
+    combined_mesh = trimesh.util.concatenate(beams + spheres)
     combined_mesh.export(output_file)
 
 def process_data(input_type, position_file=None, force_file=None, mat_file=None, beam_diameter=0.05, output_file="output.stl", adjacency_array=None, position_array=None):
     """Determines processing strategy based on input type."""
-    '''lammps data is 1-indexed while matlab data is 0-indexed'''
-
     if input_type == 'lammps':
         positions = read_position_file(position_file)
         forces = read_force_file(force_file)
         adjacency_matrix = create_adjacency_matrix(positions, forces)
         write_stl(positions, adjacency_matrix, beam_diameter, output_file, is_one_indexed=True)
-    
     elif input_type == 'mat':
         adjacency_matrix, positions = read_adjacency_matrix_from_mat(mat_file)
         if adjacency_matrix is not None and positions is not None:
             write_stl(positions, adjacency_matrix, beam_diameter, output_file, is_one_indexed=False)
-    
     elif input_type == 'csv':
         adjacency_matrix = np.genfromtxt(adjacency_array, delimiter=',')
         positions = np.genfromtxt(position_array, delimiter=',')
         if adjacency_matrix is not None and positions is not None:
             write_stl(positions, adjacency_matrix, beam_diameter, output_file, is_one_indexed=False)
-    
     else:
         print("Invalid input type. Specify 'lammps' or 'mat'.")
 
-'''
+
+# Example usage:
 # LAMMPS DATA
-position_path = './dump.position4'
-force_path = './dump.force4'
-beam_diameter = 0.25  # Modify as needed, this should be based on the spead of the points.
-process_data('lammps', position_file=position_path, force_file=force_path, beam_diameter=beam_diameter, output_file="lammps_to_stl.stl")
+#position_path = './dump.position4'
+#force_path = './dump.force4'
+#beam_diameter = 0.25
+#process_data('lammps', position_file=position_path, force_file=force_path, beam_diameter=beam_diameter, output_file="lammps_to_stl.stl")
 
 # MATLAB DATA
-mat_file ="./Adjacency_Lattice1_240408.mat"
-beam_diameter = 0.0004
-process_data("mat", mat_file=mat_file, beam_diameter=beam_diameter, output_file="mat_to_stl.stl")
-'''
+#mat_file ="./Adjacency_Lattice1_240408.mat"
+#beam_diameter = 0.0004
+#process_data("mat", mat_file=mat_file, beam_diameter=beam_diameter, output_file="mat_to_stl.stl")
+
 # CSV DATA
-adjacency_file ="./PC00c000_64_3D-box_Cubic-lattice_Gabriel_URL_adj_35.csv"
-position_file = "./PC00c000_64_3D-box_Cubic-lattice_Gabriel_URL_xy_35.csv"
-beam_diameter = 0.0004
-process_data("csv", beam_diameter=beam_diameter, output_file="csv_to_stl.stl",adjacency_array=adjacency_file,position_array=position_file)
+adjacency_file ="./PC00c000_64_3D-box_Cubic-lattice_Gabriel_URL_adj_50.csv"
+position_file = "./PC00c000_64_3D-box_Cubic-lattice_Gabriel_URL_xy_50.csv"
+beam_diameter = 0.04
+process_data("csv", beam_diameter=beam_diameter, output_file="csv_to_stl.stl", adjacency_array=adjacency_file, position_array=position_file)

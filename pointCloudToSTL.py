@@ -2,11 +2,9 @@ import numpy as np
 from libpysal.weights import Voronoi
 import shapely.geometry as sh
 import trimesh
-from trimesh.creation import box
+from trimesh.creation import box, cylinder
 import warnings
 import networkx as nx
-import argparse
-import os
 
 # Ignore future warnings
 warnings.filterwarnings("ignore", category=FutureWarning)
@@ -36,14 +34,33 @@ def create_beam(start, end, width=0.05, height=1.0):
 
     return beam
 
-def main(adjacency_file, point_cloud_file, output_file, beam_width, beam_height):
+def create_cylinder(junction, radius=0.05, height=1.0):
+    # Create a vertical cylinder
+    cyl = cylinder(radius=radius, height=height)
+
+    # Position the cylinder at the junction point
+    junction_3d = np.append(junction, height / 2)  # Adjust Z to place the cylinder correctly
+    cyl.apply_translation(junction_3d - cyl.center_mass)
+
+    return cyl
+
+# Variables to define in the code
+adjacency_file = "./PC11t004_216_2D-box_Triangular-lattice_Gabriel_URL_adj_100.csv"
+point_cloud_file = "./PC11t004_216_2D-box_Triangular-lattice_Gabriel_URL_xy_100.csv"
+output_file = "PC11t004_216_100_80mm.stl"
+beam_width = 1.5
+beam_height = 1.5
+cylinder_radius = 0.5*beam_width
+cylinder_height = 1.0
+
+def main(adjacency_file, point_cloud_file, output_file, beam_width, beam_height, cylinder_radius, cylinder_height):
     # Load the point cloud data from CSV into a NumPy array
     point_cloud = np.loadtxt(point_cloud_file, delimiter=',')
 
     xmin = np.min(point_cloud[:, 1])
     xmax = np.max(point_cloud[:, 1])
 
-    scale = 2000 / (xmax - xmin) 
+    scale = 80 / (xmax - xmin) 
 
     point_cloud = point_cloud * scale
 
@@ -55,6 +72,7 @@ def main(adjacency_file, point_cloud_file, output_file, beam_width, beam_height)
 
     # Create beams for each edge in the graph
     beams = []
+    junctions = {}
     for edge in graph.edges():
         start_idx, end_idx = edge
         # Access coordinates directly from the point_cloud array
@@ -62,8 +80,22 @@ def main(adjacency_file, point_cloud_file, output_file, beam_width, beam_height)
         end_point = point_cloud[int(end_idx)]
         beams.append(create_beam(start_point, end_point, width=beam_width, height=beam_height))
 
-    # Combine all beams into a single mesh
-    mesh = trimesh.util.concatenate(beams)
+        # Track junctions
+        for point in [start_point, end_point]:
+            point_key = tuple(point)
+            if point_key not in junctions:
+                junctions[point_key] = 0
+            junctions[point_key] += 1
+
+    # Create cylinders at junctions where beams meet
+    cylinders = []
+    for junction, count in junctions.items():
+        if count > 1:
+            cylinders.append(create_cylinder(np.array(junction), radius=cylinder_radius, height=cylinder_height))
+
+    # Combine all beams and cylinders into a single mesh
+    all_meshes = beams + cylinders
+    mesh = trimesh.util.concatenate(all_meshes)
     mesh.process(validate=True)
     mesh.fill_holes()
     print("Is watertight:", mesh.is_watertight)
@@ -72,19 +104,6 @@ def main(adjacency_file, point_cloud_file, output_file, beam_width, beam_height)
     mesh.export(output_file)
     print(f"3D model saved as {output_file}")
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Generate 3D STL file from adjacency data and point cloud")
-    parser.add_argument("adjacency_file", help="Path to the adjacency matrix CSV file")
-    parser.add_argument("point_cloud_file", help="Path to the point cloud CSV file")
-    parser.add_argument("-o", "--output_file", help="Path for the output STL file (default: based on adjacency filename)")
-    parser.add_argument("--beam_width", type=float, default=30, help="Width of the beams (default: 30)")
-    parser.add_argument("--beam_height", type=float, default=30, help="Height of the beams (default: 30)")
+# Call main function with defined variables
+main(adjacency_file, point_cloud_file, output_file, beam_width, beam_height, cylinder_radius, cylinder_height)
 
-    args = parser.parse_args()
-
-    # Set default output file name if not provided
-    if args.output_file is None:
-        base_name = os.path.splitext(os.path.basename(args.adjacency_file))[0]
-        args.output_file = f"{base_name}_3d_model.stl"
-
-    main(args.adjacency_file, args.point_cloud_file, args.output_file, args.beam_width, args.beam_height)
