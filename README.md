@@ -1,5 +1,10 @@
 # STL_Generation
 
+## Notes on Modified PointCloudToSTL.py
+
+The code works the same way as the other code in the main branch. You can run it directly in the terminal by doing 'python pointCloudToSTL.py adjacency_matrix_filename point_cloud_filename' where the filenames can be for whatever 2D configuration you want them to be.
+One thing to note: When I first tried to run the original code without making any changes, there were some dependency issues that I had to resolve. You may have to update the python packages associated with that repository to get it to work. 
+
 ## Overview
 STL_Generation is a tool developed to facilitate the transformation of 2D/ 3D point cloud data into 3D STL files. 
 
