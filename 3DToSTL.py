@@ -148,7 +148,7 @@ def process_data(input_type, position_file=None, force_file=None, mat_file=None,
 #process_data("mat", mat_file=mat_file, beam_diameter=beam_diameter, output_file="mat_to_stl.stl")
 
 # CSV DATA
-adjacency_file ="./PC00c000_64_3D-box_Cubic-lattice_Gabriel_URL_adj_50.csv"
-position_file = "./PC00c000_64_3D-box_Cubic-lattice_Gabriel_URL_xy_50.csv"
+adjacency_file ="./PC00c000_64_3D-box_Cubic-lattice_Gabriel_URL_adj_35.csv"
+position_file = "./PC00c000_64_3D-box_Cubic-lattice_Gabriel_URL_xy_35.csv"
 beam_diameter = 0.04
 process_data("csv", beam_diameter=beam_diameter, output_file="csv_to_stl.stl", adjacency_array=adjacency_file, position_array=position_file)
