@@ -1,3 +1,12 @@
+import subprocess 
+
+# make sure that convert.py is in the same folder
+inputPath = input("Enter input path here: ") # /Users/sarayukondaveeti/NetworkModels
+outputPath = input("Enter output path here: ") # /Users/sarayukondaveeti
+
+subprocess.Popen("python3 convert.py " + inputPath + " " + outputPath, shell=True)
+
+# THE CONVERSION TO STL SCRIPT 
 import numpy as np
 import trimesh
 from trimesh.creation import cylinder, icosphere
@@ -149,7 +158,27 @@ def process_data(input_type, position_file=None, force_file=None, mat_file=None,
 
 # CSV DATA
 
+adjFiles = []
+xyFiles = []
+file = open('output.txt','r')
+for i in file.readlines():
+    if ("adj" in i):
+        adjFiles.append(i.strip("\n"))
+    if ("xy" in i):
+        xyFiles.append(i.strip("\n"))
+
+# print(adjFiles)
+# print(xyFiles)
+
+for i in range(len(xyFiles)):
+    adjacency_file = adjFiles[i]
+    position_file = xyFiles[i]
+    beam_diameter = 0.04
+    process_data("csv", beam_diameter=beam_diameter, output_file="csv_to_stl.stl", adjacency_array=adjacency_file, position_array=position_file)
+
+"""
 adjacency_file ="./PC00c000_64_3D-box_Cubic-lattice_Gabriel_URL_adj_35.csv"
 position_file = "./PC00c000_64_3D-box_Cubic-lattice_Gabriel_URL_xy_35.csv"
 beam_diameter = 0.04
 process_data("csv", beam_diameter=beam_diameter, output_file="csv_to_stl.stl", adjacency_array=adjacency_file, position_array=position_file)
+"""
