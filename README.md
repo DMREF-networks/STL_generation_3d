@@ -26,8 +26,9 @@ pip3 install -r requirements.txt
 ### 2D Point Cloud to 3D STL
 **Required Steps:**
 1. Create a directory with the .adj and .xy files for each set of points you want to convert
-```
-2.  Run the script: <br>
+
+2.  Run the script:
+
 ```bash
 python3 numpyToSTL.py
 ```
