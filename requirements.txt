@@ -1,7 +1,7 @@
+os
 numpy
-libpysal
-shapely
+subprocess
 trimesh
-scipy
-networkx
+trimesh.creation 
+scipy.io
 matplotlib
