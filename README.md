@@ -12,11 +12,12 @@ STL_Generation is a tool developed to facilitate the transformation of 2D/ 3D po
 ## Getting Started
 
 ### Installation
-**To get started,** clone the repository and navigate to the project directory:
+**To get started,** clone the repository, navigate to the project directory and then checkout a branch:
 
 ```bash
 git clone https://github.com/DMREF-networks/STL_generation.git
 cd STL_generation
+git checkout numpy_to_stl_converstion
 ```
 **Next, install the required dependencies:**
 ```bash
