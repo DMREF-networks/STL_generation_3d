@@ -12,8 +12,16 @@ STL_Generation is a tool developed to facilitate the transformation of 2D/ 3D po
 ```bash
 git clone https://github.com/DMREF-networks/STL_generation.git
 cd STL_generation
-git checkout numpy_to_stl_converstion
+git checkout numpy_to_stl_conversion
 ```
+If the checkout command doesn't work, type in the following: 
+
+```bash
+git branch -a
+```
+This will show you the actual names of the branches (they might be remote). Use the git checkout command and
+type in the full name of the numpy_to_stl_conversion branch. 
+
 **Next, install the required dependencies:**
 ```bash
 pip3 install -r requirements.txt
