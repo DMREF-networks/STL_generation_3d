@@ -1,7 +1,4 @@
-os
 numpy
-subprocess
 trimesh
-trimesh.creation 
-scipy.io
+scipy
 matplotlib

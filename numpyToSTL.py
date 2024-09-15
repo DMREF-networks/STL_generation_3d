@@ -5,7 +5,9 @@
 inputPath = input("Enter input path here: ")  # Example: /Users/sarayukondaveeti/NetworkModels
 
 # Enter your desired output directory for the STL files: 
-outputPath = input("Enter output path here: ")  # Example: /Users/sarayukondaveeti
+import os
+currentPath = str(os.getcwd())
+outputPath = currentPath + "/csvFiles"
 
 # This function is called in the larger function below. It's an intermediary function to convert 
 # the numpy files into CSV files before they are converted into STL files. 
@@ -167,7 +169,7 @@ def csv_to_stl(inputPath, outputPath, beamDiameter):
         adjacency_file = adjFiles[i]
         position_file = xyFiles[i]
         beam_diameter = beamDiameter
-        process_data("csv", beam_diameter=beam_diameter, output_file=f"csv_to_stl{i}.stl", adjacency_array=adjacency_file, position_array=position_file)
+        process_data("csv", beam_diameter=beam_diameter, output_file=f"STLFile{i}.stl", adjacency_array=adjacency_file, position_array=position_file)
 
 # Call to the function that runs the converstion
 # A default beam diameter of 0.04 is used.
