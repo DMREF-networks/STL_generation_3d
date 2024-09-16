@@ -29,7 +29,7 @@ pip3 install -r requirements.txt
 2.  Run the script:
 
 ```bash
-python3 numpyToSTL.py
+python3 npyToSTLScript.py
 ```
 3. When prompted by the program, enter the path to the directory where you stored the npy files (adj and xy). If you are using the TestDataSet, enter in that in as the path. 
 
