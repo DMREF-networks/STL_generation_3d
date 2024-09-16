@@ -6,7 +6,7 @@ STL_Generation is a tool developed to facilitate the transformation of 2D/ 3D po
 ## Purpose
 - **2D Point Cloud to 3D STL**: Seamlessly converts 2D point cloud files into 3D STL files, enabling the physical representation of abstract data. Users can adjust the width of the connection beams and the height of the 3D model, offering flexibility to meet specific modeling requirements.
 
-### Directions
+## Directions
 **To get started,** clone the repository, navigate to the project directory and then checkout a branch:
 
 ```bash
