@@ -57,3 +57,5 @@ npy_to_stl("TestDataSet", 0.04)
 ```
 
 4. The program will then generate the STL files, which will show up in the project directory. Additional folders/files will also be generated (pycache, csvFiles, output.txt). These folders/files are a result of intermediary steps to convert from npy to STL. Feel free to delete them if you don't have any use for them.  
+
+**Note about running the program as a function:** However you choose to run the fuction npy_to_stl (in a for loop, etc), make sure you do step 2 first.
