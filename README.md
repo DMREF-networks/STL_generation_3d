@@ -42,6 +42,12 @@ python3 numpyToSTL.py
 git clone https://github.com/DMREF-networks/STL_generation.git
 cd STL_generation
 ```
+
+**Next, install the required dependencies:**
+```bash
+pip3 install -r requirements.txt
+```
+**To run the conversion:**
 1. Create a directory with the numpy files for each set of points you want to convert. Make sure to have both the adj files and xy numpy files for each set of points in the folder. Or alternatively, use the TestDataSet. If you would like to use the TestDataSet, this step can be skipped. 
 
 2. Import npy_to_stl in the terminal: 
