@@ -1,6 +1,6 @@
 from npy_to_csv import *
 
-def npy_to_stl(inputPath, beamDiameter):
+def npy_to_stl(inputPath):
     npy_to_csv(inputPath)
 
     import numpy as np
@@ -151,5 +151,4 @@ def npy_to_stl(inputPath, beamDiameter):
     for i in range(len(xyFiles)):
         adjacency_file = adjFiles[i]
         position_file = xyFiles[i]
-        beam_diameter = beamDiameter
-        process_data("csv", beam_diameter=beam_diameter, output_file=f"STLFile{i}.stl", adjacency_array=adjacency_file, position_array=position_file)
+        process_data("csv", beam_diameter=0.08, output_file=f"STLFile{i}.stl", adjacency_array=adjacency_file, position_array=position_file)
