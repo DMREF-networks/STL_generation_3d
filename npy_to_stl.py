@@ -1,6 +1,6 @@
 from npy_to_csv import *
 
-def npy_to_stl(inputPath):
+def npy_to_stl(inputPath, beam_diameter_in_mm, cube_side_length):
     npy_to_csv(inputPath)
 
     import numpy as np
@@ -74,24 +74,37 @@ def npy_to_stl(inputPath):
             return None, None
         return adjacency_matrix, positions
 
+    def normalize_positions(positions, cube_side_length):
+        """Normalize and scale positions to fit inside a cube with a specified side length."""
+        min_coords = np.min(positions, axis=0)
+        max_coords = np.max(positions, axis=0)
+        scale_factor = cube_side_length / np.max(max_coords - min_coords)
+        normalized_positions = (positions - min_coords) * scale_factor
+        return normalized_positions
+
     def create_beam(start_point, end_point, beam_diameter):
         """Creates a cylinder mesh between two points to represent a beam."""
         vector = np.array(end_point) - np.array(start_point)
         length = np.linalg.norm(vector)
         direction = vector / length
+        
+        # Create a cylinder with a fixed height
         beam = cylinder(radius=beam_diameter / 2, height=length, sections=32)
         beam.apply_translation(-beam.centroid)
+
         z_vector = np.array([0, 0, 1])
         axis = np.cross(z_vector, direction)
         if np.allclose(axis, [0, 0, 0]):
             axis = [0, 1, 0]
         angle = np.arccos(np.dot(z_vector, direction))
         beam.apply_transform(trimesh.transformations.rotation_matrix(angle, axis, point=beam.centroid))
+        
         midpoint = (np.array(start_point) + np.array(end_point)) / 2
         beam.apply_translation(midpoint)
+        
         return beam
 
-    def write_stl(positions, adjacency_matrix, beam_diameter=0.05, output_file="output.stl", is_one_indexed=True):
+    def write_stl(positions, adjacency_matrix, beam_diameter, output_file="output.stl", is_one_indexed=True):
         """Generates an STL file from given positions and their adjacency matrix."""
         beams = []
         spheres = []
@@ -120,22 +133,26 @@ def npy_to_stl(inputPath):
         combined_mesh = trimesh.util.concatenate(beams + spheres)
         combined_mesh.export(output_file)
 
-    def process_data(input_type, position_file=None, force_file=None, mat_file=None, beam_diameter=0.05, output_file="output.stl", adjacency_array=None, position_array=None):
+    def process_data(input_type, position_file=None, force_file=None, mat_file=None, beam_diameter=0.05, cube_side_length=1.0, output_file="output.stl", adjacency_array=None, position_array=None):
         """Determines processing strategy based on input type."""
         if input_type == 'lammps':
             positions = read_position_file(position_file)
             forces = read_force_file(force_file)
             adjacency_matrix = create_adjacency_matrix(positions, forces)
-            write_stl(positions, adjacency_matrix, beam_diameter, output_file, is_one_indexed=True)
+            positions_array = np.array([positions[key][:3] for key in sorted(positions.keys())])
+            normalized_positions = normalize_positions(positions_array, cube_side_length)
+            write_stl(normalized_positions, adjacency_matrix, beam_diameter, output_file, is_one_indexed=True)
         elif input_type == 'mat':
             adjacency_matrix, positions = read_adjacency_matrix_from_mat(mat_file)
             if adjacency_matrix is not None and positions is not None:
-                write_stl(positions, adjacency_matrix, beam_diameter, output_file, is_one_indexed=False)
+                normalized_positions = normalize_positions(positions, cube_side_length)
+                write_stl(normalized_positions, adjacency_matrix, beam_diameter, output_file, is_one_indexed=False)
         elif input_type == 'csv':
             adjacency_matrix = np.genfromtxt(adjacency_array, delimiter=',')
             positions = np.genfromtxt(position_array, delimiter=',')
             if adjacency_matrix is not None and positions is not None:
-                write_stl(positions, adjacency_matrix, beam_diameter, output_file, is_one_indexed=False)
+                normalized_positions = normalize_positions(positions, cube_side_length)
+                write_stl(normalized_positions, adjacency_matrix, beam_diameter, output_file, is_one_indexed=False)
         else:
             print("Invalid input type. Specify 'lammps' or 'mat'.")
 
@@ -151,4 +168,4 @@ def npy_to_stl(inputPath):
     for i in range(len(xyFiles)):
         adjacency_file = adjFiles[i]
         position_file = xyFiles[i]
-        process_data("csv", beam_diameter=0.08, output_file=f"STLFile{i}.stl", adjacency_array=adjacency_file, position_array=position_file)
+        process_data("csv", beam_diameter=beam_diameter_in_mm, cube_side_length=cube_side_length, output_file=f"STLFile{i}.stl", adjacency_array=adjacency_file, position_array=position_file)

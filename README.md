@@ -4,12 +4,9 @@
 STL_Generation is a tool developed to facilitate the transformation of 2D/ 3D point cloud data into 3D STL files. 
 
 ## Purpose
-- **2D Point Cloud to 3D STL**: Seamlessly converts 2D point cloud files into 3D STL files, enabling the physical representation of abstract data. Users can adjust the width of the connection beams and the height of the 3D model, offering flexibility to meet specific modeling requirements.
+- **2D Point Cloud to 3D STL**: Converts 2D point cloud files into 3D STL files, enabling the physical representation of abstract data. Users can adjust the width of the connection beams and the height of the 3D model, offering flexibility to meet specific modeling requirements.
 
 ## Directions To Run As A Script
-
-Running this program as a script will use a default value for beam diameter. If you would like to adjust beam 
-diameter, please run the program as a function. 
 
 **To get started,** clone the repository and navigate to the project directory:
 
@@ -33,9 +30,14 @@ python3 npyToSTLScript.py
 ```
 3. When prompted by the program, enter the path to the directory where you stored the npy files (adj and xy). If you are using the TestDataSet, enter in that in as the path. 
 
-4. The program will then generate the STL files, which will show up in the project directory. Additional folders/files will also be generated (pycache, csvFiles, output.txt). These folders/files are a result of intermediary steps to convert from npy to STL. Feel free to delete them if you don't have any use for them. 
+4. You will also be prompted to enter the desired matrix height and desired beam diameter. 
+
+5. The program will then generate the STL files, which will show up in the project directory. Additional folders/files will also be generated (pycache, csvFiles, output.txt). These folders/files are a result of intermediary steps to convert from npy to STL. Feel free to delete them if you don't have any use for them. 
 
 ## Directions To Run As A Function
+
+**This is currently broken, I will fix it very shortly.**
+
 **To get started,** clone the repository and navigate to the project directory:
 
 ```bash
