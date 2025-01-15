@@ -36,8 +36,6 @@ python3 npyToSTLScript.py
 
 ## Directions To Run As A Function
 
-**This is currently broken, I will fix it very shortly.**
-
 **To get started,** clone the repository and navigate to the project directory:
 
 ```bash
@@ -52,18 +50,22 @@ pip3 install -r requirements.txt
 **To run the conversion:**
 1. Create a directory with the numpy files for each set of points you want to convert. Make sure to have both the adj files and xy numpy files for each set of points in the folder. Or alternatively, use the TestDataSet. If you would like to use the TestDataSet, this step can be skipped. 
 
-2. Import npy_to_stl in the terminal: 
+2. Type 'python3' in the terminal to run python. The commands in steps 3 and 4 should be run by python. 
+
+3. Import npy_to_stl in the terminal: 
 
 ```bash
 from npy_to_stl import *
 ```
 
-3. Call the fuction npy_to_stl(directory_with_npy_files, beam_width). If you are choosing to use the TestDataSet, simply type "TestDataSet" in place of the the directory parameter. The default value for beam width in the script is 0.04, so if you are unsure of what beam width to use, this default value can be used. 
+4. Call the fuction npy_to_stl(directory_with_npy_files, beam_diameter, sample_height). If you are choosing to use the TestDataSet, simply type "TestDataSet" in place of the the directory parameter. 
 
 ```bash
-npy_to_stl("TestDataSet", 0.04)
+npy_to_stl("TestDataSet", 1.76, 80)
+
+# This command would generate a sample 80 mm tall with beams that have a diameter of 1.76 mm. 
 ```
 
 4. The program will then generate the STL files, which will show up in the project directory. Additional folders/files will also be generated (pycache, csvFiles, output.txt). These folders/files are a result of intermediary steps to convert from npy to STL. Feel free to delete them if you don't have any use for them.  
 
-**Note about running the program as a function:** However you choose to run the fuction npy_to_stl (in a for loop, etc), make sure you do step 2 first.
+**Note about running the program as a function:** However you choose to run the fuction npy_to_stl (in a for loop, etc), make sure you do step 3 first.
