@@ -147,7 +147,7 @@ def csv_to_stl(inputPath, beam_diameter_in_mm, cube_side_length):
 
         # combined_mesh = trimesh.util.concatenate(beams + spheres) # CONCATENATE - original meshing method
         combined_mesh = trimesh.boolean.union( beams + spheres ) # UNION - requires pip install manifold3d
-        # trimesh.repair.fill_holes(combined_mesh)
+        trimesh.repair.fill_holes(combined_mesh)
 
         combined_mesh.export(output_file)
 
