@@ -141,10 +141,16 @@ def csv_to_stl(inputPath, beam_diameter_in_mm, cube_side_length):
         
         for pos in position_values:
             sphere = icosphere(radius=beam_diameter / 2)
+            # sphere = icosphere( radius=beam_diameter * 2 ) # OVERSIZED SPHERES
             sphere.apply_translation(pos[:3])
             spheres.append(sphere)
 
-        combined_mesh = trimesh.util.concatenate(beams + spheres)
+        # combined_mesh = trimesh.util.concatenate(beams + spheres) # CONCATENATE - original meshing method
+        combined_mesh = trimesh.boolean.union( beams + spheres ) # UNION - requires pip install manifold3d
+        # CONCATENATE + REPAIR HOLES 
+        # combined_mesh = trimesh.util.concatenate(beams + spheres)
+        # trimesh.repair.fill_holes(combined_mesh)
+
         combined_mesh.export(output_file)
 
     def process_data(input_type, position_file=None, force_file=None, mat_file=None, beam_diameter=0.05, cube_side_length=1.0, output_file="output.stl", adjacency_array=None, position_array=None):
