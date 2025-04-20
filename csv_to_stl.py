@@ -176,14 +176,37 @@ def csv_to_stl(inputPath, beam_diameter_in_mm, cube_side_length):
 
     adjFiles = []
     xyFiles = []
-    file = open('output.txt','r')
-    for i in file.readlines():
-        if ("adj" in i):
-            adjFiles.append(i.strip("\n"))
-        if ("xy" in i):
-            xyFiles.append(i.strip("\n"))
+    match_strings = []
 
-    for i in range(len(xyFiles)):
-        adjacency_file = adjFiles[i]
-        position_file = xyFiles[i]
-        process_data("csv", beam_diameter=beam_diameter_in_mm, cube_side_length=cube_side_length, output_file=f"STLFile{i}.stl", adjacency_array=adjacency_file, position_array=position_file)
+    with open('output.txt', 'r') as file:
+        readlines = file.readlines()
+
+    disorder = ""
+    for line in readlines:
+        if "adj" in line:
+            line = line.strip()
+            match_string = line[:line.index("adj") - 1]
+            adjFiles.append(line)
+
+            # matching xy file
+            for xy_line in readlines:
+                if "xy" in xy_line and match_string in xy_line:
+                    xyFiles.append(xy_line.strip())
+                    try:
+                        disorder = xy_line[xy_line.index("xy") + 2 : line.index("csv") - 2]
+                    except:
+                        print("No disorder found")
+                    break  # stop after the first match
+
+            # match string
+            try:
+                match_base = match_string[match_string.rindex("/") + 1:]
+            except ValueError:
+                match_base = match_string
+            match_base += disorder
+            match_strings.append(match_base)
+
+        for i in range(len(xyFiles)):
+            adjacency_file = adjFiles[i]
+            position_file = xyFiles[i]
+            process_data("csv", beam_diameter=beam_diameter_in_mm, cube_side_length=cube_side_length, output_file=f"{match_strings[i]}.stl", adjacency_array=adjacency_file, position_array=position_file)

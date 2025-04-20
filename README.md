@@ -33,6 +33,12 @@ python3 npyToSTLScript.py
 
 4. When prompted by the program, enter the path to the directory where you stored the npy or csv files (adj and xy). 
 
+IMPORTANT NOTE: If the folder contains the point clouds and adjacency matrices for more than one STL file, make sure they are all either csv OR npy. The code currently does not support a mix. Furthermore, the matching between the xy and adj files relies on the fact that the files are in the following format: 
+
+name_adj.csv, name_xy.csv OR name_adj.npy, name_xy.npy
+
+Make sure none of the files have the same name, or some files might get overwritten. Furthermore, anything after the adj or xy will be cut off. The sample files in the delaunay, delaunay_centroidal, gabriel, voronoi, and gabriel folders all work with this format, but as you can see, the kick factor (or a factor) is after the adj/xy so it doesn't get included in the STL name. This is something that currently needs to be fixed. 
+
 5. Next, you will also be prompted to enter the desired matrix height and desired beam diameter. 
 
 6. The program will then generate the STL files, which will show up in the project directory. Additional folders/files will also be generated (pycache, csvFiles, output.txt). These folders/files are a result of intermediary steps to convert from npy to STL. To delete these files, run the following commands:
@@ -43,3 +49,6 @@ chmod +x clean.sh
 ./clean.sh
 
 ```
+## Directions To Run As A Function
+
+TO BE ADDED
