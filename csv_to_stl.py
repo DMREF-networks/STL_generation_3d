@@ -181,7 +181,7 @@ def csv_to_stl(inputPath, beam_diameter_in_mm, cube_side_length):
     with open('output.txt', 'r') as file:
         readlines = file.readlines()
 
-    disorder = ""
+    disorder = "" # currently not being added
     for line in readlines:
         if "adj" in line:
             line = line.strip()
@@ -192,10 +192,10 @@ def csv_to_stl(inputPath, beam_diameter_in_mm, cube_side_length):
             for xy_line in readlines:
                 if "xy" in xy_line and match_string in xy_line:
                     xyFiles.append(xy_line.strip())
-                    try:
-                        disorder = xy_line[xy_line.index("xy") + 2 : line.index("csv") - 2]
-                    except:
-                        print("No disorder found")
+                    # try:
+                    #     disorder = xy_line[xy_line.index("xy") + 2 : line.index("csv") - 2]
+                    # except:
+                    #     print("No disorder found")
                     break  # stop after the first match
 
             # match string
