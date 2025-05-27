@@ -1,5 +1,7 @@
 # STL_Generation
 
+## README Needs to be updated with Rat's Nest Generation directions 
+
 ## Overview
 STL_Generation is a tool developed to facilitate the transformation of 2D/3D point cloud data (in either .npy or .csv format) into 3D STL files. 
 
