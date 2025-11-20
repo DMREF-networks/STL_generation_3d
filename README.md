@@ -1,12 +1,10 @@
 # STL_Generation
 
-## README Needs to be updated with Rat's Nest Generation directions 
-
 ## Overview
 STL_Generation is a tool developed to facilitate the transformation of 2D/3D point cloud data (in either .npy or .csv format) into 3D STL files. 
 
 ## Purpose
-- Converts 2D point cloud files into 3D STL files, enabling the physical representation of abstract data. Users can adjust the width of the connection beams and the height of the 3D model, offering flexibility to meet specific modeling requirements.
+- Converts point cloud files into 3D STL files, enabling the physical representation of abstract data. Users can adjust the width of the connection beams and the height of the 3D model, offering flexibility to meet specific modeling requirements.
 
 ## Directions To Run As A Script
 
@@ -45,12 +43,17 @@ Make sure none of the files have the same name, or some files might get overwrit
 
 6. The program will then generate the STL files, which will show up in the project directory. Additional folders/files will also be generated (pycache, csvFiles, output.txt). These folders/files are a result of intermediary steps to convert from npy to STL. To delete these files, run the following commands:
 
+For MacOS/Linux:
+
 ```bash
 chmod +x clean.sh
 
 ./clean.sh
 
 ```
-## Directions To Run As A Function
 
-TO BE ADDED
+For Windows:
+
+```bash
+Run clean.bat
+```
