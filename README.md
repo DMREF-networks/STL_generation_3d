@@ -55,5 +55,5 @@ chmod +x clean.sh
 For Windows:
 
 ```bash
-Run clean.bat
+.\clean.bat
 ```
