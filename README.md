@@ -1,7 +1,7 @@
 # STL_Generation
 
 ## Overview
-STL_Generation is a tool developed to facilitate the transformation of 2D/3D point cloud data (in either .npy or .csv format) into 3D STL files. 
+STL_Generation is a tool developed to facilitate the transformation of 3D point cloud data (in either .npy or .csv format) into 3D STL files. 
 
 ## Purpose
 - Converts point cloud files into 3D STL files, enabling the physical representation of abstract data. Users can adjust the width of the connection beams and the height of the 3D model, offering flexibility to meet specific modeling requirements.
