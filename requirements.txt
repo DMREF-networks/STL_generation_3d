@@ -3,3 +3,5 @@ trimesh
 scipy
 matplotlib
 manifold3d
+plotly
+shapely

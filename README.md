@@ -57,3 +57,57 @@ For Windows:
 ```bash
 .\clean.bat
 ```
+
+## Variable beam thickness
+
+By default the adjacency matrix is treated as binary: every non-zero
+entry produces a beam of the diameter you entered at the prompt.
+
+To make the thickness vary per beam, encode a weight in the adjacency
+matrix (or, for the npy path, in a 3rd column of the edge list). The
+beam diameter for edge (i, j) is then
+
+    diameter_ij = beam_diameter * adjacency_matrix[i, j]
+
+So a binary matrix (entries = 1) reproduces the original uniform
+behaviour, and non-binary weights scale each beam independently. Choose
+your weight units so `beam_diameter * weight` lands in millimetres —
+e.g. set the prompt to 1.0 and store the raw diameter in the matrix, or
+set the prompt to a reference diameter and store unit-less scale
+factors. Junction spheres automatically grow to cover the thickest
+incident beam at each node.
+
+For the npy edge-list path, save `adj` files as an `(E, 3)` array where
+the 3rd column is the weight. `(E, 2)` arrays keep working unchanged
+(weight = 1).
+
+## 2D networks
+
+If your `xy` file has only two columns, the beams will be laid flat on
+the z = 0 plane. No flag needed — the code promotes `(N, 2)` positions
+to `(N, 3)` with `z = 0` automatically.
+
+## HTML viewer
+
+Every STL is accompanied by an interactive `.html` file of the same
+basename. Open it in any browser for a 3D preview of the network, with
+beams coloured by diameter. Requires `plotly` (already listed in
+`requirements.txt`).
+
+## Methods: cylinders vs. planar
+
+The script prompts for a method:
+
+- **`cylinders`** (default): original approach — each beam is a 3D
+  cylinder, junctions are spheres. Works for any network (2D or 3D).
+- **`planar`**: each beam is a 2D rectangle and each node is a 2D disc;
+  shapely unions them in the plane, and the merged polygon is extruded
+  to a single uniform-thickness slab. Only valid for **flat / 2D**
+  networks, but it's dramatically more robust for thin beams, avoids
+  the junction-gap problem entirely, and produces a much smaller mesh
+  (shapely's planar boolean is far more reliable than trimesh's 3D
+  boolean union). Requires `shapely` and prompts for an extrusion depth
+  in millimetres (default = the beam diameter you entered).
+
+Both methods respect the same adjacency-matrix / edge-list convention
+for variable thickness.
