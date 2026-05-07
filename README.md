@@ -74,8 +74,17 @@ behaviour, and non-binary weights scale each beam independently. Choose
 your weight units so `beam_diameter * weight` lands in millimetres —
 e.g. set the prompt to 1.0 and store the raw diameter in the matrix, or
 set the prompt to a reference diameter and store unit-less scale
-factors. Junction spheres automatically grow to cover the thickest
-incident beam at each node.
+factors.
+
+### Junction sphere sizing
+
+Each junction sphere is sized **per-node** to that node's thickest
+incident beam — *not* a single system-wide value. So a node where only
+thin beams meet gets a thin sphere (no oversized bulge), while a node
+with a thick beam attached gets a sphere large enough to fill the
+junction cavity. Endpoint nodes get a sphere matching their single
+incident beam; isolated nodes get no sphere at all. The same per-node
+rule is used by the planar method for its merge-time discs.
 
 For the npy edge-list path, save `adj` files as an `(E, 3)` array where
 the 3rd column is the weight. `(E, 2)` arrays keep working unchanged
