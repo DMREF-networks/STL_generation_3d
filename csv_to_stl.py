@@ -153,10 +153,9 @@ def csv_to_stl(inputPath, beam_diameter_in_mm, cube_side_length,
         edge_records = []  # (start, end, diameter) used by the HTML viewer
         start_index = 1 if is_one_indexed else 0
 
-        # Compute the max incident weight per node so junction spheres match
-        # the thickest beam they meet. Endpoint nodes thus get a sphere
-        # sized to their (single) beam rather than a fixed floor, and
-        # isolated nodes get no sphere at all.
+        # Per-node junction sizing: each sphere matches the *thickest*
+        # beam incident on that node. This fills the junction without
+        # producing oversized bulges at nodes where only thin beams meet.
         n = len(adjacency_matrix)
         node_max_weight = np.zeros(n)
         for i in range(start_index, n):
@@ -193,7 +192,6 @@ def csv_to_stl(inputPath, beam_diameter_in_mm, cube_side_length,
             if weight <= 0:
                 continue  # isolated node → no junction sphere
             sphere = icosphere(radius=beam_diameter / 2 * weight)
-            # sphere = icosphere( radius=beam_diameter * 2 ) # OVERSIZED SPHERES
             sphere.apply_translation(pos[:3])
             spheres.append(sphere)
 
@@ -265,7 +263,11 @@ def csv_to_stl(inputPath, beam_diameter_in_mm, cube_side_length,
         )
         fig = go.Figure(data=[mesh])
         fig.update_layout(
-            scene=dict(aspectmode="data", xaxis_title="x", yaxis_title="y", zaxis_title="z"),
+            scene=dict(
+                aspectmode="data",
+                xaxis_title="x", yaxis_title="y", zaxis_title="z",
+                camera=dict(eye=dict(x=2.4, y=2.4, z=2.4)),
+            ),
             margin=dict(l=0, r=0, t=30, b=0),
             title=output_file,
         )
@@ -292,8 +294,9 @@ def csv_to_stl(inputPath, beam_diameter_in_mm, cube_side_length,
         n = len(adjacency_matrix)
         start_index = 1 if is_one_indexed else 0
 
-        # Max incident weight per node. Endpoint nodes get a disc sized to
-        # their (single) beam, and isolated nodes get no disc at all.
+        # Per-node disc sizing: each disc matches that node's thickest
+        # incident beam. Endpoint nodes get a disc sized to their (single)
+        # beam, and isolated nodes get no disc at all.
         node_max_weight = np.zeros(n)
         for i in range(start_index, n):
             for j in range(i + 1, len(adjacency_matrix[i])):
@@ -326,7 +329,7 @@ def csv_to_stl(inputPath, beam_diameter_in_mm, cube_side_length,
                            p2 + half_w * normal]
                 polys.append(_ShPoly(corners))
 
-        # Disc per node: radius = beam_diameter/2 * max_incident_weight.
+        # Disc per node: radius = beam_diameter/2 * node's thickest weight.
         disc_resolution = 24
         thetas = np.linspace(0.0, 2.0 * math.pi, disc_resolution, endpoint=False)
         for idx, p in enumerate(pts2d):
@@ -413,7 +416,11 @@ def csv_to_stl(inputPath, beam_diameter_in_mm, cube_side_length,
                 ))
         fig = go.Figure(data=traces)
         fig.update_layout(
-            scene=dict(aspectmode="data", xaxis_title="x", yaxis_title="y", zaxis_title="z"),
+            scene=dict(
+                aspectmode="data",
+                xaxis_title="x", yaxis_title="y", zaxis_title="z",
+                camera=dict(eye=dict(x=2.4, y=2.4, z=2.4)),
+            ),
             margin=dict(l=0, r=0, t=30, b=0),
             title=output_file,
         )
