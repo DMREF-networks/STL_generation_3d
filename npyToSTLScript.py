@@ -10,6 +10,9 @@ inputPath = input("Enter input path here: ")  # Example: /Users/sarayukondaveeti
 diameter = float(input("Enter beam diameter in millimeters: ")) # Example: 2.8
 side = float(input("Enter matrix side length in millimeters: ")) # Example: 80
 
+variable_thickness_resp = input("Use variable beam thickness from adjacency values? [y/N]: ").strip().lower()
+variable_thickness = variable_thickness_resp in ("y", "yes", "true", "1")
+
 # Method selection. "cylinders" = original 3D cylinder + junction-sphere
 # approach (works for any network). "planar" = merge 2D rectangles + discs
 # with shapely and extrude (flat networks only; robust to thin beams and
@@ -27,6 +30,10 @@ if method == "planar":
     extrusion_depth = float(resp) if resp else None
 
 if (file_type == "csv"):
-    csv_to_stl(inputPath, diameter, side, method=method, extrusion_depth=extrusion_depth)
+    csv_to_stl(inputPath, diameter, side, method=method,
+               extrusion_depth=extrusion_depth,
+               variable_thickness=variable_thickness)
 elif (file_type == "npy"):
-    npy_to_stl(inputPath, diameter, side, method=method, extrusion_depth=extrusion_depth)
+    npy_to_stl(inputPath, diameter, side, method=method,
+               extrusion_depth=extrusion_depth,
+               variable_thickness=variable_thickness)

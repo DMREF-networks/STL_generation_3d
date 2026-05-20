@@ -1,3 +1,10 @@
 myenv/
 .DS_store
 .vscode
+__pycache__/
+csvFiles/
+output.txt
+*.html
+*.stl
+!samples_output/*.html
+!samples_output/*.stl

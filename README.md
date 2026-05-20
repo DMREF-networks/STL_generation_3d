@@ -37,9 +37,13 @@ IMPORTANT NOTE: If the folder contains the point clouds and adjacency matrices f
 
 name_adj.csv, name_xy.csv OR name_adj.npy, name_xy.npy
 
-Make sure none of the files have the same name, or some files might get overwritten. Furthermore, anything after the adj or xy will be cut off. The sample files in the delaunay, delaunay_centroidal, gabriel, voronoi, and gabriel folders all work with this format, but as you can see, the kick factor (or a factor) is after the adj/xy so it doesn't get included in the STL name. This is something that currently needs to be fixed. 
+Files may include matching suffixes after `_adj` and `_xy` (for example,
+`network_adj_0.1.npy` and `network_xy_0.1.npy`). Those suffixes are
+preserved in the STL and HTML output names.
 
-5. Next, you will also be prompted to enter the desired matrix height and desired beam diameter. 
+5. Next, you will be prompted for the desired matrix side length, desired
+beam diameter, whether to use variable beam thickness, and the meshing
+method.
 
 6. The program will then generate the STL files, which will show up in the project directory. Additional folders/files will also be generated (pycache, csvFiles, output.txt). These folders/files are a result of intermediary steps to convert from npy to STL. To delete these files, run the following commands:
 
@@ -60,12 +64,17 @@ For Windows:
 
 ## Variable beam thickness
 
-By default the adjacency matrix is treated as binary: every non-zero
-entry produces a beam of the diameter you entered at the prompt.
+By default, adjacency values are treated as binary connectivity: every
+non-zero entry produces a beam of the diameter you entered at the prompt.
+This is true even when a NumPy `adj` file is an `(E, 3)` edge list. The
+3rd column is ignored unless variable beam thickness is explicitly
+enabled.
 
-To make the thickness vary per beam, encode a weight in the adjacency
-matrix (or, for the npy path, in a 3rd column of the edge list). The
-beam diameter for edge (i, j) is then
+To make the thickness vary per beam, answer `y` to the variable-thickness
+prompt (or pass `variable_thickness=True` when calling the Python
+functions), then encode a weight in the adjacency matrix or, for the npy
+path, in a 3rd column of the edge list. The beam diameter for edge (i, j)
+is then
 
     diameter_ij = beam_diameter * adjacency_matrix[i, j]
 
@@ -87,8 +96,8 @@ incident beam; isolated nodes get no sphere at all. The same per-node
 rule is used by the planar method for its merge-time discs.
 
 For the npy edge-list path, save `adj` files as an `(E, 3)` array where
-the 3rd column is the weight. `(E, 2)` arrays keep working unchanged
-(weight = 1).
+the 3rd column is the weight, then enable variable thickness. `(E, 2)`
+arrays keep working unchanged (weight = 1).
 
 ## 2D networks
 
@@ -118,5 +127,6 @@ The script prompts for a method:
   boolean union). Requires `shapely` and prompts for an extrusion depth
   in millimetres (default = the beam diameter you entered).
 
-Both methods respect the same adjacency-matrix / edge-list convention
-for variable thickness.
+Both methods use constant beam thickness by default and respect
+adjacency-matrix / edge-list thickness weights only when variable
+thickness is enabled.

@@ -15,7 +15,8 @@ def csv_process(inputPath):
 
 
 def csv_to_stl(inputPath, beam_diameter_in_mm, cube_side_length,
-               method="cylinders", extrusion_depth=None):
+               method="cylinders", extrusion_depth=None,
+               variable_thickness=False):
     """Build STL files from adjacency/xy CSVs in ``inputPath``.
 
     method : "cylinders" (default) uses the 3D cylinder + junction-sphere
@@ -27,9 +28,13 @@ def csv_to_stl(inputPath, beam_diameter_in_mm, cube_side_length,
     extrusion_depth : only used when ``method == "planar"``. Z-thickness
         of the extruded slab in mm. Defaults to ``beam_diameter_in_mm``
         (thinnest beam gets a square cross-section).
+    variable_thickness : when False (default), every non-zero adjacency
+        value produces the same beam diameter. When True, adjacency values
+        scale the base beam diameter per edge.
     """
     csv_process(inputPath)
 
+    import os
     import numpy as np
     import trimesh
     from trimesh.creation import cylinder, icosphere
@@ -131,16 +136,20 @@ def csv_to_stl(inputPath, beam_diameter_in_mm, cube_side_length,
         
         return beam
 
+    def edge_weight(adjacency_value):
+        """Map an adjacency value to a beam thickness scale."""
+        if adjacency_value <= 0:
+            return 0.0
+        return float(adjacency_value) if variable_thickness else 1.0
+
     def write_stl(positions, adjacency_matrix, beam_diameter, output_file="output.stl", is_one_indexed=True):
         """Generates an STL file from given positions and their adjacency matrix.
 
-        Adjacency values act as per-edge weights on the base beam_diameter:
-        the beam diameter between nodes i and j is ``beam_diameter *
-        adjacency_matrix[i, j]``. Binary matrices (entries = 1) therefore
-        reproduce the original uniform-thickness behaviour. Non-binary
-        matrices produce variable-thickness beams. An HTML viewer is
-        written alongside the STL so the network can be inspected in a
-        browser.
+        By default, adjacency values are treated as binary connectivity:
+        every non-zero entry uses the same beam diameter. When
+        variable_thickness is enabled, adjacency values scale the base
+        beam_diameter per edge. An HTML viewer is written alongside the
+        STL so the network can be inspected in a browser.
         """
         # Promote 2D positions (N, 2) to 3D by laying beams on z=0.
         if not isinstance(positions, dict):
@@ -160,7 +169,7 @@ def csv_to_stl(inputPath, beam_diameter_in_mm, cube_side_length,
         node_max_weight = np.zeros(n)
         for i in range(start_index, n):
             for j in range(i + 1, len(adjacency_matrix[i])):
-                w = adjacency_matrix[i, j]
+                w = edge_weight(adjacency_matrix[i, j])
                 if w > 0:
                     if w > node_max_weight[i]:
                         node_max_weight[i] = w
@@ -170,7 +179,7 @@ def csv_to_stl(inputPath, beam_diameter_in_mm, cube_side_length,
         # Add beams
         for i in range(start_index, n):
             for j in range(i + 1, len(adjacency_matrix[i])):
-                w = adjacency_matrix[i, j]
+                w = edge_weight(adjacency_matrix[i, j])
                 if w > 0:
                     diameter = beam_diameter * w
                     start_point = positions[i][:3]
@@ -300,7 +309,7 @@ def csv_to_stl(inputPath, beam_diameter_in_mm, cube_side_length,
         node_max_weight = np.zeros(n)
         for i in range(start_index, n):
             for j in range(i + 1, len(adjacency_matrix[i])):
-                w = adjacency_matrix[i, j]
+                w = edge_weight(adjacency_matrix[i, j])
                 if w > 0:
                     if w > node_max_weight[i]:
                         node_max_weight[i] = w
@@ -312,7 +321,7 @@ def csv_to_stl(inputPath, beam_diameter_in_mm, cube_side_length,
         # Rectangle per edge: width = beam_diameter * weight.
         for i in range(start_index, n):
             for j in range(i + 1, len(adjacency_matrix[i])):
-                w = adjacency_matrix[i, j]
+                w = edge_weight(adjacency_matrix[i, j])
                 if w <= 0:
                     continue
                 p1 = pts2d[i]
@@ -461,39 +470,42 @@ def csv_to_stl(inputPath, beam_diameter_in_mm, cube_side_length,
         else:
             print("Invalid input type. Specify 'lammps' or 'mat'.")
 
-    adjFiles = []
-    xyFiles = []
-    match_strings = []
-
     with open('output.txt', 'r') as file:
         readlines = file.readlines()
 
-    disorder = "" # currently not being added
-    for line in readlines:
-        if "adj" in line:
-            line = line.strip()
-            match_string = line[:line.index("adj") - 1]
-            adjFiles.append(line)
+    def parse_network_csv(path, role):
+        """Return a pairing key and output basename for *_adj*.csv / *_xy*.csv."""
+        directory, filename = os.path.split(path)
+        stem, _ = os.path.splitext(filename)
+        token = f"_{role}"
+        if token not in stem:
+            return None
+        prefix, suffix = stem.split(token, 1)
+        return (directory, prefix, suffix), f"{prefix}{suffix}"
 
-            # matching xy file
-            for xy_line in readlines:
-                if "xy" in xy_line and match_string in xy_line:
-                    xyFiles.append(xy_line.strip())
-                    # try:
-                    #     disorder = xy_line[xy_line.index("xy") + 2 : line.index("csv") - 2]
-                    # except:
-                    #     print("No disorder found")
-                    break  # stop after the first match
+    csv_paths = [line.strip() for line in readlines if line.strip().endswith(".csv")]
+    xy_by_key = {}
+    for path in csv_paths:
+        parsed = parse_network_csv(path, "xy")
+        if parsed is not None:
+            key, _ = parsed
+            xy_by_key[key] = path
 
-            # match string
-            try:
-                match_base = match_string[match_string.rindex("/") + 1:]
-            except ValueError:
-                match_base = match_string
-            match_base += disorder
-            match_strings.append(match_base)
+    pairs = []
+    for path in csv_paths:
+        parsed = parse_network_csv(path, "adj")
+        if parsed is None:
+            continue
+        key, output_base = parsed
+        position_file = xy_by_key.get(key)
+        if position_file is None:
+            print(f"No matching xy file found for {path}; skipping.")
+            continue
+        pairs.append((path, position_file, output_base))
 
-        for i in range(len(xyFiles)):
-            adjacency_file = adjFiles[i]
-            position_file = xyFiles[i]
-            process_data("csv", beam_diameter=beam_diameter_in_mm, cube_side_length=cube_side_length, output_file=f"{match_strings[i]}.stl", adjacency_array=adjacency_file, position_array=position_file)
+    for adjacency_file, position_file, output_base in pairs:
+        process_data("csv", beam_diameter=beam_diameter_in_mm,
+                     cube_side_length=cube_side_length,
+                     output_file=f"{output_base}.stl",
+                     adjacency_array=adjacency_file,
+                     position_array=position_file)
