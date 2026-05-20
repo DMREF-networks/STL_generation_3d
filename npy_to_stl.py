@@ -8,6 +8,7 @@ from scipy.io import loadmat
 from matplotlib import pyplot as plt
 
 import os 
+import tempfile
 
 def convert_npy_to_csv(src_directory, dst_directory, variable_thickness=False):
     
@@ -21,45 +22,34 @@ def convert_npy_to_csv(src_directory, dst_directory, variable_thickness=False):
         adj files as per-edge thickness weights. When False, ignore the 3rd
         column and write binary connectivity.
     """
-    import sys
-    original_stdout = sys.stdout
-    try:
-        with open('output.txt', 'w') as f:
-            sys.stdout = f
+    converted_paths = []
 
-            for root, _, files in os.walk(src_directory):
-                dst_subdir = os.path.join(dst_directory, "")
-                os.makedirs(dst_subdir, exist_ok=True)
+    for root, _, files in os.walk(src_directory):
+        dst_subdir = os.path.join(dst_directory, "")
+        os.makedirs(dst_subdir, exist_ok=True)
 
-                for file in files:
-                    if file.endswith('.npy'):
-                        npy_path = os.path.join(root, file)
+        for file in files:
+            if file.endswith('.npy'):
+                npy_path = os.path.join(root, file)
 
-                        if 'adj' in file:
-                            # Convert edge list to CSV and adjacency matrix
-                            edges = np.load(npy_path)
-                            '''
-                            csv_path = os.path.join(dst_subdir, file[:-4] + '.csv')
-                            np.savetxt(csv_path, edges, delimiter=',')
-                            print(f"Converted {npy_path} to {csv_path}")
-                            '''
-                            adjacency_matrix = edges_to_adjacency_matrix(
-                                edges, variable_thickness=variable_thickness
-                            )
-                            adj_matrix_csv_path = os.path.join(dst_subdir, file[:-4] + '.csv')
-                            np.savetxt(adj_matrix_csv_path, adjacency_matrix, delimiter=',')
-                            # print(f"Converted {npy_path} to {adj_matrix_csv_path}")
-                            print(adj_matrix_csv_path)
+                if 'adj' in file:
+                    # Convert edge list to CSV and adjacency matrix
+                    edges = np.load(npy_path)
+                    adjacency_matrix = edges_to_adjacency_matrix(
+                        edges, variable_thickness=variable_thickness
+                    )
+                    adj_matrix_csv_path = os.path.join(dst_subdir, file[:-4] + '.csv')
+                    np.savetxt(adj_matrix_csv_path, adjacency_matrix, delimiter=',')
+                    converted_paths.append(adj_matrix_csv_path)
 
-                        elif 'xy' in file:
-                            # Convert positions to CSV
-                            csv_path = os.path.join(dst_subdir, file[:-4] + '.csv')
-                            array = np.load(npy_path)
-                            np.savetxt(csv_path, array, delimiter=',')
-                            # print(f"Converted {npy_path} to {csv_path}")
-                            print(csv_path)
-    finally:
-        sys.stdout = original_stdout
+                elif 'xy' in file:
+                    # Convert positions to CSV
+                    csv_path = os.path.join(dst_subdir, file[:-4] + '.csv')
+                    array = np.load(npy_path)
+                    np.savetxt(csv_path, array, delimiter=',')
+                    converted_paths.append(csv_path)
+
+    return converted_paths
 
 def edges_to_adjacency_matrix(edges, variable_thickness=False):
     """
@@ -93,11 +83,10 @@ def edges_to_adjacency_matrix(edges, variable_thickness=False):
 def npy_to_stl(inputPath, beam_diameter_in_mm, cube_side_length,
                method="cylinders", extrusion_depth=None,
                variable_thickness=False):
-    currentPath = str(os.getcwd())
-    outputPath = currentPath + "/csvFiles"
-    convert_npy_to_csv(inputPath, outputPath,
-                       variable_thickness=variable_thickness)
+    with tempfile.TemporaryDirectory(prefix="stl_generation_csv_") as outputPath:
+        convert_npy_to_csv(inputPath, outputPath,
+                           variable_thickness=variable_thickness)
 
-    csv_to_stl(outputPath, beam_diameter_in_mm, cube_side_length,
-               method=method, extrusion_depth=extrusion_depth,
-               variable_thickness=variable_thickness)
+        csv_to_stl(outputPath, beam_diameter_in_mm, cube_side_length,
+                   method=method, extrusion_depth=extrusion_depth,
+                   variable_thickness=variable_thickness)

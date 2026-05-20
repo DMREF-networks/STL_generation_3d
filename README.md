@@ -45,7 +45,12 @@ preserved in the STL and HTML output names.
 beam diameter, whether to use variable beam thickness, and the meshing
 method.
 
-6. The program will then generate the STL files, which will show up in the project directory. Additional folders/files will also be generated (pycache, csvFiles, output.txt). These folders/files are a result of intermediary steps to convert from npy to STL. To delete these files, run the following commands:
+6. The program will then generate the STL and HTML files, which will show
+up in the project directory. NumPy inputs are converted through a
+temporary per-run directory, so stale `csvFiles` or `output.txt` files
+from earlier runs are ignored. Python may still create a `__pycache__`
+folder. To delete old byproducts from previous versions, run the
+following commands:
 
 For MacOS/Linux:
 

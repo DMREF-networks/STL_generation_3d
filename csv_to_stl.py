@@ -1,17 +1,14 @@
 
 def csv_process(inputPath): 
     import os
-    import sys
-    
-    original_stdout = sys.stdout  # Save original stdout
-    with open('output.txt', 'w') as f:
-        sys.stdout = f  # Redirect stdout to output.txt
-        for root, _, files in os.walk(inputPath):  
-            csv_files = [file for file in files if file.endswith('.csv')]  # Filter only .csv files
-            for csv_file in csv_files:
-                print(os.path.join(root, csv_file))  # Print full path of each CSV file
-    
-    sys.stdout = original_stdout
+
+    csv_paths = []
+    for root, _, files in os.walk(inputPath):
+        csv_files = [file for file in files if file.endswith('.csv')]
+        for csv_file in csv_files:
+            csv_paths.append(os.path.join(root, csv_file))
+
+    return csv_paths
 
 
 def csv_to_stl(inputPath, beam_diameter_in_mm, cube_side_length,
@@ -32,8 +29,6 @@ def csv_to_stl(inputPath, beam_diameter_in_mm, cube_side_length,
         value produces the same beam diameter. When True, adjacency values
         scale the base beam diameter per edge.
     """
-    csv_process(inputPath)
-
     import os
     import numpy as np
     import trimesh
@@ -470,9 +465,6 @@ def csv_to_stl(inputPath, beam_diameter_in_mm, cube_side_length,
         else:
             print("Invalid input type. Specify 'lammps' or 'mat'.")
 
-    with open('output.txt', 'r') as file:
-        readlines = file.readlines()
-
     def parse_network_csv(path, role):
         """Return a pairing key and output basename for *_adj*.csv / *_xy*.csv."""
         directory, filename = os.path.split(path)
@@ -483,7 +475,7 @@ def csv_to_stl(inputPath, beam_diameter_in_mm, cube_side_length,
         prefix, suffix = stem.split(token, 1)
         return (directory, prefix, suffix), f"{prefix}{suffix}"
 
-    csv_paths = [line.strip() for line in readlines if line.strip().endswith(".csv")]
+    csv_paths = csv_process(inputPath)
     xy_by_key = {}
     for path in csv_paths:
         parsed = parse_network_csv(path, "xy")
