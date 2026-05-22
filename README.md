@@ -86,9 +86,10 @@ python material_stl_ui.py
 ```
 
 The script opens a browser page with buttons to load/save a JSON config,
-generate STL files, and create the random-material edge-list demo. Keep
-the Python process running while using the page. The browser provides the
-interface, and the local Python process does the meshing and file writes.
+generate STL files, create the random-material edge-list demo, and load
+the Voronoi random-material demo. Keep the Python process running while
+using the page. The browser provides the interface, and the local Python
+process does the meshing and file writes.
 
 ## Beam Thickness
 
@@ -236,6 +237,31 @@ self-contained synthetic network. To force one behavior:
 ```bash
 python examples/random_material_edge_list_demo.py --source sr --sr-repo /path/to/sr_huppi_project
 python examples/random_material_edge_list_demo.py --source synthetic
+```
+
+## Voronoi Random-Material Demo
+
+The repository includes a deterministic Voronoi example with about 150
+network nodes. Its edges are randomly split between two materials, and
+all node junctions use one shared node material.
+
+Generate or refresh the demo files with:
+
+```bash
+python examples/voronoi_random_material_demo.py
+```
+
+Generate the STL files with:
+
+```bash
+python config_to_stl.py sample_configs/voronoi_random_material_demo/voronoi_material_demo.json
+```
+
+The committed demo has 152 graph nodes and 226 edges. The edge material
+split is recorded directly in:
+
+```text
+sample_configs/voronoi_random_material_demo/voronoi_material_demo_edges.csv
 ```
 
 ## Static Config Builder

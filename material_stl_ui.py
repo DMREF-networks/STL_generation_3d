@@ -19,7 +19,8 @@ from typing import Any, Dict
 from urllib.parse import parse_qs, urlparse
 
 from config_to_stl import generate_from_config_data
-from examples.random_material_edge_list_demo import generate_demo
+from examples.random_material_edge_list_demo import generate_demo as generate_edge_list_demo
+from examples.voronoi_random_material_demo import generate_demo as generate_voronoi_demo
 
 
 DEFAULT_CONFIG_PATH = Path("sample_configs/multimaterial_test.json")
@@ -205,6 +206,7 @@ PAGE = """<!doctype html>
     <h1>Material STL Generator</h1>
     <div>
       <button id="demo">Create Edge-List Demo</button>
+      <button id="voronoiDemo">Load Voronoi Demo</button>
       <button id="generate" class="primary">Generate STLs</button>
     </div>
   </header>
@@ -349,6 +351,20 @@ PAGE = """<!doctype html>
       }
     });
 
+    document.getElementById("voronoiDemo").addEventListener("click", async () => {
+      setBusy(true);
+      setStatus("Creating Voronoi random-material demo...");
+      try {
+        const payload = await post("/voronoi-demo", {});
+        await loadConfig(payload.config_path);
+        setStatus(`Voronoi demo loaded: ${payload.node_count} nodes, ${payload.edge_count} edges`);
+      } catch (error) {
+        setStatus(error.message, true);
+      } finally {
+        setBusy(false);
+      }
+    });
+
     loadConfig("sample_configs/multimaterial_test.json").catch(error => {
       setStatus(error.message, true);
     });
@@ -384,6 +400,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._generate(payload)
             elif parsed.path == "/demo":
                 self._demo()
+            elif parsed.path == "/voronoi-demo":
+                self._voronoi_demo()
             else:
                 self.send_error(HTTPStatus.NOT_FOUND)
         except Exception as exc:
@@ -417,7 +435,11 @@ class Handler(BaseHTTPRequestHandler):
         self._send_json({"result": result})
 
     def _demo(self) -> None:
-        result = generate_demo()
+        result = generate_edge_list_demo()
+        self._send_json(result)
+
+    def _voronoi_demo(self) -> None:
+        result = generate_voronoi_demo()
         self._send_json(result)
 
     def _read_json(self) -> Dict[str, Any]:

@@ -1,0 +1,32 @@
+{
+  "output_dir": "../../samples_output/voronoi_random_material_demo",
+  "default_material": "material_a",
+  "geometry": {
+    "beam_diameter_mm": 0.18,
+    "cube_side_length_mm": 50,
+    "variable_thickness": true,
+    "node_material": "node_material",
+    "junction_policy": "separate",
+    "mixed_junction_material": "node_material",
+    "boolean_union": false
+  },
+  "materials": {
+    "material_a": {
+      "color": "#2563eb"
+    },
+    "material_b": {
+      "color": "#dc2626"
+    },
+    "node_material": {
+      "color": "#4b5563"
+    }
+  },
+  "jobs": [
+    {
+      "name": "voronoi_random_material_demo",
+      "positions": "voronoi_material_demo_xy.csv",
+      "adjacency": "voronoi_material_demo_edges.csv",
+      "adjacency_format": "edge_list"
+    }
+  ]
+}
