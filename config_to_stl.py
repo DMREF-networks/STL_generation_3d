@@ -103,6 +103,8 @@ def _generate_job(
     boolean_union = bool(geometry.get("boolean_union", True))
     junction_policy = str(geometry.get("junction_policy", "separate")).strip().lower()
     mixed_junction_material = str(geometry.get("mixed_junction_material", "junctions"))
+    node_material = geometry.get("node_material")
+    node_material = str(node_material).strip() if node_material is not None else None
     default_material = str(job.get("default_material", root_config.get("default_material", "default")))
 
     if beam_diameter <= 0:
@@ -155,6 +157,7 @@ def _generate_job(
         beam_diameter,
         junction_policy=junction_policy,
         mixed_junction_material=mixed_junction_material,
+        node_material=node_material,
         sphere_subdivisions=sphere_subdivisions,
     )
 
@@ -190,6 +193,7 @@ def _generate_job(
             "cube_side_length_mm": cube_side,
             "variable_thickness": variable_thickness,
             "junction_policy": junction_policy,
+            "node_material": node_material,
             "boolean_union": boolean_union,
         },
     }
@@ -494,6 +498,7 @@ def _add_junction_spheres(
     beam_diameter: float,
     junction_policy: str,
     mixed_junction_material: str,
+    node_material: Optional[str],
     sphere_subdivisions: int,
 ) -> None:
     for idx, material_weights in incident.items():
@@ -505,7 +510,9 @@ def _add_junction_spheres(
             continue
 
         unique_materials = sorted({material for material, _ in material_weights})
-        if len(unique_materials) == 1:
+        if node_material:
+            target_materials = [node_material]
+        elif len(unique_materials) == 1:
             target_materials = unique_materials
         elif junction_policy == "separate":
             target_materials = [mixed_junction_material]

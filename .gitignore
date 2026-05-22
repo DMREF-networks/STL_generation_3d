@@ -4,6 +4,7 @@ myenv/
 __pycache__/
 csvFiles/
 output.txt
+sample_configs/random_edge_material_demo/
 *.html
 *.stl
 !material_config_builder.html

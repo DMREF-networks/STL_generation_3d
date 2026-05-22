@@ -268,6 +268,9 @@
               <option value="per_material">per_material</option>
             </select>
           </label>
+          <label>All-node material
+            <input id="nodeMaterial" value="junctions">
+          </label>
           <label>Mixed junction material
             <input id="mixedJunctionMaterial" value="junctions">
           </label>
@@ -336,6 +339,7 @@
         beam_diameter_mm: 0.25,
         cube_side_length_mm: 30,
         variable_thickness: true,
+        node_material: "junctions",
         junction_policy: "separate",
         mixed_junction_material: "junctions",
         boolean_union: true
@@ -353,7 +357,7 @@
     const ids = [
       "jobName", "outputDir", "positions", "adjacency", "adjacencyFormat",
       "materialMatrix", "edgeMaterials", "defaultMaterial", "beamDiameter",
-      "sideLength", "junctionPolicy", "mixedJunctionMaterial",
+      "sideLength", "junctionPolicy", "nodeMaterial", "mixedJunctionMaterial",
       "variableThickness", "booleanUnion", "configFileName"
     ];
 
@@ -414,6 +418,7 @@
           beam_diameter_mm: Number(el.beamDiameter.value),
           cube_side_length_mm: Number(el.sideLength.value),
           variable_thickness: el.variableThickness.checked,
+          node_material: el.nodeMaterial.value.trim() || undefined,
           junction_policy: el.junctionPolicy.value,
           mixed_junction_material: el.mixedJunctionMaterial.value.trim() || "junctions",
           boolean_union: el.booleanUnion.checked
@@ -456,6 +461,7 @@
       el.beamDiameter.value = geometry.beam_diameter_mm || geometry.beam_diameter || 1;
       el.sideLength.value = geometry.cube_side_length_mm || geometry.cube_side_length || 1;
       el.junctionPolicy.value = geometry.junction_policy || "separate";
+      el.nodeMaterial.value = geometry.node_material || "";
       el.mixedJunctionMaterial.value = geometry.mixed_junction_material || "junctions";
       el.variableThickness.checked = Boolean(geometry.variable_thickness);
       el.booleanUnion.checked = geometry.boolean_union !== false;

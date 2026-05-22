@@ -77,6 +77,19 @@ The script prompts for:
 Generated STL and HTML preview files are written to the current working
 directory.
 
+## Browser UI That Generates STLs
+
+Run the local browser UI with:
+
+```bash
+python material_stl_ui.py
+```
+
+The script opens a browser page with buttons to load/save a JSON config,
+generate STL files, and create the random-material edge-list demo. Keep
+the Python process running while using the page. The browser provides the
+interface, and the local Python process does the meshing and file writes.
+
 ## Beam Thickness
 
 By default, adjacency values are treated as binary connectivity. Every
@@ -145,6 +158,7 @@ same-shape material matrix:
     "beam_diameter_mm": 0.25,
     "cube_side_length_mm": 30,
     "variable_thickness": true,
+    "node_material": "junctions",
     "junction_policy": "separate",
     "mixed_junction_material": "junctions",
     "boolean_union": true
@@ -177,12 +191,52 @@ Set `"adjacency_format": "edge_list"` for that layout.
 
 Mixed-material junctions are controlled by `geometry.junction_policy`:
 
+- If `geometry.node_material` is set, every node junction sphere is
+  written to that material, regardless of the incident edge materials.
 - `separate`: same-material nodes stay with that material; mixed nodes
   are written to `mixed_junction_material`.
 - `dominant`: mixed nodes go to the material with the largest total
   incident edge weight.
 - `per_material`: mixed nodes are duplicated into each incident material
   STL. This can create overlapping geometry.
+
+## Random Edge-List Material Demo
+
+This demo is intended for teaching the full workflow from edge list and
+node positions to multi-material STL files.
+
+```bash
+python examples/random_material_edge_list_demo.py
+python config_to_stl.py sample_configs/random_edge_material_demo/edge_material_demo.json
+```
+
+The demo writes:
+
+```text
+sample_configs/random_edge_material_demo/edge_material_demo_xy.csv
+sample_configs/random_edge_material_demo/edge_material_demo_edges.csv
+sample_configs/random_edge_material_demo/edge_material_demo_node_materials.csv
+sample_configs/random_edge_material_demo/edge_material_demo.json
+```
+
+The edge list has columns:
+
+```csv
+source,target,thickness,material
+```
+
+Each edge is randomly assigned to one of two edge materials. All nodes
+are assigned to the same node material through `geometry.node_material`.
+
+By default, the demo tries to use the neighboring `sr_huppi_project`
+centerline-network generator if it is available at
+`/home/james/sr_huppi_project`; otherwise it falls back to a small
+self-contained synthetic network. To force one behavior:
+
+```bash
+python examples/random_material_edge_list_demo.py --source sr --sr-repo /path/to/sr_huppi_project
+python examples/random_material_edge_list_demo.py --source synthetic
+```
 
 ## Static Config Builder
 
