@@ -52,7 +52,9 @@ Position files may have two columns (`x, y`) or three columns
 Adjacency data can be either:
 
 - a square adjacency matrix, where nonzero entries are edges
-- an edge list, usually `(source, target)` or `(source, target, weight)`
+- an edge list, commonly `(source, target)`,
+  `(source, target, thickness)`, `(source, target, material)`, or
+  `(source, target, thickness, material)`
 
 For `.npy` edge-list inputs, the existing sample data uses an `(E, 3)`
 array.
@@ -85,11 +87,22 @@ Run the local browser UI with:
 python material_stl_ui.py
 ```
 
-The script opens a browser page with buttons to load/save a JSON config,
-generate STL files, create the random-material edge-list demo, and load
-the Voronoi random-material demo. Keep the Python process running while
-using the page. The browser provides the interface, and the local Python
-process does the meshing and file writes.
+The script opens a browser page with form controls for the common
+configuration choices: input files, connectivity format, material source,
+beam size, thickness mode, junction policy, node material, and output
+folder. Use the `Browse` and `Choose` buttons to select local files and
+folders through the file explorer, or paste paths directly into the
+fields. Keep the Python process running while using the page. The
+browser provides the interface, and the local Python process does the
+meshing and file writes.
+
+The UI can load existing JSON configs, save edited configs, generate STL
+files, create the random-material edge-list demo, and load the Voronoi
+random-material demo. The advanced JSON panel is still available for
+manual edits, but it is not required for the normal workflow.
+
+If the file picker cannot open in your environment, paste the file path
+into the field instead.
 
 ## Beam Thickness
 
@@ -102,9 +115,12 @@ If variable thickness is enabled, adjacency values become scale factors:
 edge_diameter = beam_diameter * adjacency_value
 ```
 
-For `.npy` edge-list inputs, the third column is used as the thickness
-weight only when variable thickness is enabled. Otherwise every edge
-uses weight `1.0`.
+For edge-list inputs, the thickness defaults are:
+
+- two columns, `source,target`: every edge uses weight `1.0`
+- three numeric columns, `source,target,thickness`: the third column is
+  used only when variable thickness is enabled
+- if variable thickness is disabled, every edge uses weight `1.0`
 
 ## Meshing Methods
 
@@ -190,6 +206,20 @@ source,target,thickness,material
 
 Set `"adjacency_format": "edge_list"` for that layout.
 
+Edge-list column handling is intentionally permissive:
+
+| Columns | Meaning |
+| --- | --- |
+| `source,target` | default thickness, `default_material` |
+| `source,target,thickness` | thickness column plus `default_material`; thickness is used only when `geometry.variable_thickness` is `true` |
+| `source,target,material` | default thickness plus per-edge material; use a header row so the third column is identified as material |
+| `source,target,thickness,material` | per-edge thickness and per-edge material |
+
+Headerless three-column edge lists are ambiguous. Numeric third columns
+are treated as thickness when variable thickness is enabled. Text third
+columns are treated as material. A header row is the clearest option for
+teaching examples.
+
 Mixed-material junctions are controlled by `geometry.junction_policy`:
 
 - If `geometry.node_material` is set, every node junction sphere is
@@ -200,6 +230,13 @@ Mixed-material junctions are controlled by `geometry.junction_policy`:
   incident edge weight.
 - `per_material`: mixed nodes are duplicated into each incident material
   STL. This can create overlapping geometry.
+
+If `geometry.node_material` is omitted, node junctions still have a
+defined default behavior: nodes touching only one material are written
+with that edge material, and mixed-material nodes follow
+`junction_policy`. For a single shared node material, set
+`geometry.node_material` in the config, for example `"junctions"` or the
+same name as `default_material`.
 
 ## Random Edge-List Material Demo
 
@@ -292,4 +329,12 @@ On Windows:
 
 ```bat
 clean.bat
+```
+
+## Checks
+
+Run the lightweight regression tests with:
+
+```bash
+python -m unittest discover
 ```

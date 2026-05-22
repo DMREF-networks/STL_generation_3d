@@ -1,8 +1,7 @@
 """Local browser UI that generates STL files.
 
-This UI has a small Python backend because STL generation requires local
-Python code and filesystem writes. It opens in the browser, but the Python
-process must remain running while the page is used.
+The page runs in a regular browser, while this small Python server performs
+the local filesystem reads/writes and calls the STL generation code.
 """
 
 from __future__ import annotations
@@ -15,7 +14,7 @@ import webbrowser
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Iterable, Tuple
 from urllib.parse import parse_qs, urlparse
 
 from config_to_stl import generate_from_config_data
@@ -34,15 +33,18 @@ PAGE = """<!doctype html>
   <title>Material STL Generator</title>
   <style>
     :root {
-      --bg: #f4f6f8;
+      --bg: #f5f6f3;
       --panel: #ffffff;
-      --border: #d4dae3;
-      --text: #1f2937;
-      --muted: #5b6472;
+      --panel-2: #fbfbf8;
+      --border: #d8ddd6;
+      --text: #20262e;
+      --muted: #626b76;
       --accent: #0f766e;
       --accent-dark: #115e59;
-      --danger: #b91c1c;
+      --secondary: #6d5dfc;
+      --danger: #b42318;
       --code: #111827;
+      --shadow: 0 8px 24px rgba(31, 41, 55, 0.08);
     }
     * { box-sizing: border-box; }
     body {
@@ -55,51 +57,88 @@ PAGE = """<!doctype html>
       line-height: 1.4;
     }
     header {
-      height: 56px;
+      min-height: 60px;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 0 18px;
+      gap: 14px;
+      padding: 10px 18px;
       border-bottom: 1px solid var(--border);
       background: var(--panel);
+      box-shadow: 0 1px 0 rgba(31, 41, 55, 0.03);
     }
     h1 {
       margin: 0;
       font-size: 18px;
-      font-weight: 650;
+      font-weight: 700;
       letter-spacing: 0;
+    }
+    h2 {
+      margin: 0;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 750;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
     }
     main {
       display: grid;
-      grid-template-columns: minmax(440px, 1fr) minmax(420px, 0.95fr);
-      gap: 14px;
-      padding: 14px;
-      min-height: calc(100vh - 56px);
+      grid-template-columns: minmax(520px, 1.08fr) minmax(420px, 0.92fr);
+      gap: 16px;
+      padding: 16px;
+      min-height: calc(100vh - 60px);
     }
     section {
       min-width: 0;
       border: 1px solid var(--border);
       background: var(--panel);
       border-radius: 8px;
+      box-shadow: var(--shadow);
       overflow: hidden;
-      display: flex;
-      flex-direction: column;
     }
-    .bar {
+    .section-head {
+      min-height: 44px;
       display: flex;
-      gap: 8px;
       align-items: center;
-      padding: 10px 12px;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 8px 12px;
       border-bottom: 1px solid var(--border);
-      background: #fbfcfd;
+      background: var(--panel-2);
     }
-    .bar label {
+    .content {
+      padding: 12px;
+    }
+    .stack {
+      display: grid;
+      gap: 14px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+    .field-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 8px;
+      align-items: end;
+    }
+    label {
+      display: grid;
+      gap: 5px;
+      min-width: 0;
       color: var(--muted);
       font-size: 12px;
       font-weight: 700;
-      white-space: nowrap;
     }
-    input, textarea {
+    input, select, textarea {
       width: 100%;
       min-width: 0;
       border: 1px solid var(--border);
@@ -108,18 +147,26 @@ PAGE = """<!doctype html>
       color: var(--text);
       font: inherit;
     }
-    input {
+    input, select {
       height: 34px;
       padding: 0 9px;
     }
+    input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+      padding: 0;
+      accent-color: var(--accent);
+    }
+    input[type="color"] {
+      width: 44px;
+      padding: 2px;
+    }
     textarea {
-      flex: 1;
-      min-height: 560px;
-      resize: none;
+      min-height: 290px;
+      resize: vertical;
       padding: 12px;
       color: var(--code);
       font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
-      outline: none;
       tab-size: 2;
     }
     button {
@@ -130,7 +177,7 @@ PAGE = """<!doctype html>
       background: white;
       color: var(--text);
       font: inherit;
-      font-weight: 650;
+      font-weight: 700;
       cursor: pointer;
       white-space: nowrap;
     }
@@ -140,20 +187,43 @@ PAGE = """<!doctype html>
       color: white;
     }
     button.primary:hover { background: var(--accent-dark); }
-    button:disabled { opacity: 0.58; cursor: wait; }
-    .result {
-      flex: 1;
-      overflow: auto;
-      padding: 12px;
+    button.secondary {
+      border-color: #c8c5ff;
+      color: #342f9b;
+      background: #f5f3ff;
+    }
+    button.icon {
+      width: 34px;
+      padding: 0;
+      font-size: 17px;
+      line-height: 1;
+    }
+    button:disabled {
+      opacity: 0.58;
+      cursor: wait;
+    }
+    .check {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 34px;
+      color: var(--text);
+      font-size: 14px;
+      font-weight: 550;
+    }
+    .hint {
+      color: var(--muted);
+      font-size: 12px;
     }
     .status {
-      min-height: 34px;
+      min-height: 38px;
       display: flex;
       align-items: center;
       padding: 0 12px;
       border-bottom: 1px solid var(--border);
-      background: #fbfcfd;
+      background: var(--panel-2);
       color: var(--muted);
+      overflow-wrap: anywhere;
     }
     .status.error { color: var(--danger); }
     table {
@@ -163,25 +233,61 @@ PAGE = """<!doctype html>
       border: 1px solid var(--border);
       border-radius: 8px;
       overflow: hidden;
-      margin-bottom: 12px;
     }
     th, td {
       padding: 8px;
       border-bottom: 1px solid var(--border);
       text-align: left;
-      vertical-align: top;
+      vertical-align: middle;
       overflow-wrap: anywhere;
     }
     th {
       color: var(--muted);
-      background: #fbfcfd;
+      background: var(--panel-2);
+      font-size: 12px;
+      font-weight: 750;
+    }
+    tr:last-child td { border-bottom: 0; }
+    .materials th:last-child,
+    .materials td:last-child {
+      width: 48px;
+      text-align: center;
+    }
+    .swatch-name {
+      display: grid;
+      grid-template-columns: 44px minmax(0, 1fr);
+      gap: 8px;
+      align-items: center;
+    }
+    .result {
+      padding: 12px;
+      overflow: auto;
+    }
+    .summary {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .metric {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px;
+      background: var(--panel-2);
+    }
+    .metric strong {
+      display: block;
+      font-size: 18px;
+      line-height: 1.1;
+    }
+    .metric span {
+      color: var(--muted);
       font-size: 12px;
       font-weight: 700;
     }
-    tr:last-child td { border-bottom: 0; }
     a {
       color: var(--accent-dark);
-      font-weight: 650;
+      font-weight: 700;
       text-decoration: none;
     }
     a:hover { text-decoration: underline; }
@@ -195,42 +301,203 @@ PAGE = """<!doctype html>
       color: var(--danger);
       background: #fff;
     }
-    @media (max-width: 920px) {
+    details {
+      border-top: 1px solid var(--border);
+      padding-top: 10px;
+    }
+    summary {
+      cursor: pointer;
+      color: var(--muted);
+      font-weight: 750;
+    }
+    .full { grid-column: 1 / -1; }
+    .hidden { display: none; }
+    @media (max-width: 1020px) {
+      header { align-items: stretch; flex-direction: column; }
       main { grid-template-columns: 1fr; }
-      textarea { min-height: 420px; }
+    }
+    @media (max-width: 680px) {
+      .grid, .summary { grid-template-columns: 1fr; }
+      .field-row { grid-template-columns: 1fr; }
+      .row { flex-wrap: wrap; }
     }
   </style>
 </head>
 <body>
   <header>
     <h1>Material STL Generator</h1>
-    <div>
-      <button id="demo">Create Edge-List Demo</button>
-      <button id="voronoiDemo">Load Voronoi Demo</button>
+    <div class="row">
+      <select id="demoPreset" aria-label="Demo preset">
+        <option value="sample">Sample matrix config</option>
+        <option value="edge">Random material edge list</option>
+        <option value="voronoi">Voronoi random materials</option>
+      </select>
+      <button id="loadDemo">Load Demo</button>
       <button id="generate" class="primary">Generate STLs</button>
     </div>
   </header>
+
   <main>
     <section>
-      <div class="bar">
-        <label for="configPath">Config path</label>
-        <input id="configPath" value="sample_configs/multimaterial_test.json">
-        <button id="load">Load</button>
-        <button id="save">Save</button>
+      <div class="section-head">
+        <h2>Configuration</h2>
+        <div class="row">
+          <button id="openConfig">Open JSON</button>
+          <button id="saveConfig">Save</button>
+          <button id="saveConfigAs">Save As</button>
+        </div>
       </div>
-      <textarea id="config" spellcheck="false"></textarea>
+      <div class="content stack">
+        <div class="field-row">
+          <label>Config path
+            <input id="configPath" value="sample_configs/multimaterial_test.json">
+          </label>
+          <button class="browse" data-target="configPath" data-kind="config">Browse</button>
+        </div>
+
+        <div class="grid">
+          <label>Job name
+            <input id="jobName" value="test_multimaterial">
+          </label>
+          <div class="field-row">
+            <label>Output folder
+              <input id="outputDir" value="../samples_output/material_demo">
+            </label>
+            <button class="browse-dir" data-target="outputDir">Choose</button>
+          </div>
+          <div class="field-row">
+            <label>Node positions file
+              <input id="positions" value="demo_xy.csv">
+            </label>
+            <button class="browse" data-target="positions" data-kind="positions">Choose</button>
+          </div>
+          <div class="field-row">
+            <label>Adjacency or edge-list file
+              <input id="adjacency" value="demo_adj.csv">
+            </label>
+            <button class="browse" data-target="adjacency" data-kind="adjacency">Choose</button>
+          </div>
+          <label>Connectivity format
+            <select id="adjacencyFormat">
+              <option value="auto">Auto detect</option>
+              <option value="matrix">Adjacency matrix</option>
+              <option value="edge_list">Edge list</option>
+            </select>
+          </label>
+          <label>Edge material source
+            <select id="materialMode">
+              <option value="default">Use default material</option>
+              <option value="matrix">Material matrix file</option>
+              <option value="edge_column">Material column in edge list</option>
+              <option value="edge_table">Separate edge-material table</option>
+            </select>
+          </label>
+          <div id="materialMatrixRow" class="field-row">
+            <label>Material matrix file
+              <input id="materialMatrix" value="demo_material_matrix.csv">
+            </label>
+            <button class="browse" data-target="materialMatrix" data-kind="material_matrix">Choose</button>
+          </div>
+          <div id="edgeMaterialsRow" class="field-row hidden">
+            <label>Edge-material table
+              <input id="edgeMaterials" placeholder="optional CSV path">
+            </label>
+            <button class="browse" data-target="edgeMaterials" data-kind="edge_materials">Choose</button>
+          </div>
+        </div>
+
+        <div class="grid">
+          <label>Default edge material
+            <select id="defaultMaterial"></select>
+          </label>
+          <label>Node material
+            <select id="nodeMaterial"></select>
+          </label>
+          <label>Mixed-junction material
+            <select id="mixedJunctionMaterial"></select>
+          </label>
+          <label>Junction policy
+            <select id="junctionPolicy">
+              <option value="separate">Separate mixed nodes</option>
+              <option value="dominant">Dominant incident material</option>
+              <option value="per_material">Duplicate per material</option>
+            </select>
+          </label>
+          <label>Beam diameter mm
+            <input id="beamDiameter" type="number" step="0.001" min="0" value="0.25">
+          </label>
+          <label>Side length mm
+            <input id="sideLength" type="number" step="0.001" min="0" value="30">
+          </label>
+          <label class="check">
+            <input id="variableThickness" type="checkbox" checked>
+            Use adjacency or thickness values
+          </label>
+          <label class="check">
+            <input id="booleanUnion" type="checkbox" checked>
+            Boolean union per material
+          </label>
+        </div>
+
+        <div class="stack">
+          <div class="section-head">
+            <h2>Materials</h2>
+            <button id="addMaterial" class="secondary">Add Material</button>
+          </div>
+          <table class="materials">
+            <thead>
+              <tr>
+                <th>Material</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="materialsBody"></tbody>
+          </table>
+        </div>
+
+        <details>
+          <summary>Advanced JSON</summary>
+          <div class="stack" style="margin-top: 10px;">
+            <div class="row">
+              <button id="applyJson">Apply JSON to Form</button>
+              <button id="refreshJson">Refresh From Form</button>
+            </div>
+            <textarea id="configJson" spellcheck="false"></textarea>
+          </div>
+        </details>
+      </div>
     </section>
+
     <section>
       <div id="status" class="status">Loading sample config...</div>
       <div id="result" class="result"></div>
     </section>
   </main>
+
   <script>
-    const configPath = document.getElementById("configPath");
-    const config = document.getElementById("config");
+    const ids = [
+      "configPath", "jobName", "outputDir", "positions", "adjacency",
+      "adjacencyFormat", "materialMode", "materialMatrix", "edgeMaterials",
+      "defaultMaterial", "nodeMaterial", "mixedJunctionMaterial",
+      "junctionPolicy", "beamDiameter", "sideLength", "variableThickness",
+      "booleanUnion", "configJson", "demoPreset"
+    ];
+    const el = Object.fromEntries(ids.map(id => [id, document.getElementById(id)]));
+    const materialsBody = document.getElementById("materialsBody");
     const statusEl = document.getElementById("status");
     const resultEl = document.getElementById("result");
+    const materialMatrixRow = document.getElementById("materialMatrixRow");
+    const edgeMaterialsRow = document.getElementById("edgeMaterialsRow");
     const buttons = [...document.querySelectorAll("button")];
+
+    const defaultMaterials = [
+      ["rigid", "#2563eb"],
+      ["flexible", "#dc2626"],
+      ["conductive", "#059669"],
+      ["junctions", "#4b5563"]
+    ];
+
+    let jsonDirty = false;
 
     function setBusy(busy) {
       buttons.forEach(button => button.disabled = busy);
@@ -241,8 +508,20 @@ PAGE = """<!doctype html>
       statusEl.classList.toggle("error", isError);
     }
 
+    function escapeHtml(value) {
+      return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;");
+    }
+
+    function escapeAttr(value) {
+      return escapeHtml(value).replaceAll("'", "&#39;");
+    }
+
     function fileLink(path, label) {
-      return `<a target="_blank" rel="noreferrer" href="/file?path=${encodeURIComponent(path)}">${label}</a>`;
+      return `<a target="_blank" rel="noreferrer" href="/file?path=${encodeURIComponent(path)}">${escapeHtml(label)}</a>`;
     }
 
     async function post(url, body) {
@@ -258,6 +537,174 @@ PAGE = """<!doctype html>
       return payload;
     }
 
+    function addMaterialRow(name = "", color = "#2563eb") {
+      const row = document.createElement("tr");
+      row.innerHTML = `
+        <td>
+          <div class="swatch-name">
+            <input class="material-color" type="color" value="${escapeAttr(color)}" aria-label="Material color">
+            <input class="material-name" value="${escapeAttr(name)}" aria-label="Material name">
+          </div>
+        </td>
+        <td><button class="icon remove-material" title="Remove material" aria-label="Remove material">x</button></td>
+      `;
+      materialsBody.appendChild(row);
+      row.querySelector(".remove-material").addEventListener("click", () => {
+        row.remove();
+        render();
+      });
+      row.querySelectorAll("input").forEach(input => input.addEventListener("input", render));
+    }
+
+    function materialEntries() {
+      const entries = [];
+      materialsBody.querySelectorAll("tr").forEach(row => {
+        const name = row.querySelector(".material-name").value.trim();
+        const color = row.querySelector(".material-color").value || "#2563eb";
+        if (name) entries.push([name, color]);
+      });
+      return entries;
+    }
+
+    function materialsObject() {
+      return Object.fromEntries(materialEntries().map(([name, color]) => [name, { color }]));
+    }
+
+    function setSelectOptions(select, values, options = {}) {
+      const previous = select.value;
+      select.innerHTML = "";
+      if (options.blankLabel) {
+        const blank = document.createElement("option");
+        blank.value = "";
+        blank.textContent = options.blankLabel;
+        select.appendChild(blank);
+      }
+      values.forEach(value => {
+        const option = document.createElement("option");
+        option.value = value;
+        option.textContent = value;
+        select.appendChild(option);
+      });
+      if (previous && values.includes(previous)) {
+        select.value = previous;
+      } else if (options.preferred && values.includes(options.preferred)) {
+        select.value = options.preferred;
+      } else if (!options.blankLabel && values.length) {
+        select.value = values[0];
+      }
+    }
+
+    function updateMaterialSelects() {
+      const names = materialEntries().map(([name]) => name);
+      const defaultName = names.includes(el.defaultMaterial.value) ? el.defaultMaterial.value : names[0] || "default";
+      setSelectOptions(el.defaultMaterial, names, { preferred: defaultName });
+      setSelectOptions(el.nodeMaterial, names, { blankLabel: "Auto from connected edges" });
+      setSelectOptions(el.mixedJunctionMaterial, names, { preferred: names.includes("junctions") ? "junctions" : defaultName });
+    }
+
+    function buildConfig() {
+      const geometry = {
+        beam_diameter_mm: Number(el.beamDiameter.value),
+        cube_side_length_mm: Number(el.sideLength.value),
+        variable_thickness: el.variableThickness.checked,
+        junction_policy: el.junctionPolicy.value,
+        mixed_junction_material: el.mixedJunctionMaterial.value || "junctions",
+        boolean_union: el.booleanUnion.checked
+      };
+      if (el.nodeMaterial.value) geometry.node_material = el.nodeMaterial.value;
+
+      const job = {
+        name: el.jobName.value.trim() || "network",
+        positions: el.positions.value.trim(),
+        adjacency: el.adjacency.value.trim(),
+        adjacency_format: el.adjacencyFormat.value
+      };
+      if (el.materialMode.value === "matrix" && el.materialMatrix.value.trim()) {
+        job.material_matrix = el.materialMatrix.value.trim();
+      }
+      if (el.materialMode.value === "edge_table" && el.edgeMaterials.value.trim()) {
+        job.edge_materials = el.edgeMaterials.value.trim();
+      }
+
+      return {
+        output_dir: el.outputDir.value.trim() || ".",
+        default_material: el.defaultMaterial.value || "default",
+        geometry,
+        materials: materialsObject(),
+        jobs: [job]
+      };
+    }
+
+    function validate(config) {
+      const job = config.jobs[0];
+      const errors = [];
+      if (!job.positions) errors.push("Node positions file is required.");
+      if (!job.adjacency) errors.push("Adjacency or edge-list file is required.");
+      if (!(config.geometry.beam_diameter_mm > 0)) errors.push("Beam diameter must be greater than zero.");
+      if (!(config.geometry.cube_side_length_mm > 0)) errors.push("Side length must be greater than zero.");
+      if (Object.keys(config.materials).length === 0) errors.push("At least one material is required.");
+      if (config.jobs[0].adjacency_format === "matrix" && el.materialMode.value === "edge_column") {
+        errors.push("A material column only applies to edge-list inputs.");
+      }
+      if (errors.length) setStatus(errors.join(" "), true);
+      else if (!jsonDirty) setStatus("Ready");
+    }
+
+    function render(options = {}) {
+      updateMaterialSelects();
+      materialMatrixRow.classList.toggle("hidden", el.materialMode.value !== "matrix");
+      edgeMaterialsRow.classList.toggle("hidden", el.materialMode.value !== "edge_table");
+      const config = buildConfig();
+      if (!jsonDirty || options.forceJson) {
+        el.configJson.value = JSON.stringify(config, null, 2);
+        jsonDirty = false;
+      }
+      validate(config);
+    }
+
+    function loadConfigObject(config, path = "") {
+      const job = (Array.isArray(config.jobs) && config.jobs[0]) || config;
+      const geometry = { ...(config.geometry || {}), ...(job.geometry || {}) };
+      const materials = { ...(config.materials || {}), ...(job.materials || {}) };
+
+      el.configPath.value = path || el.configPath.value;
+      el.jobName.value = job.name || "network";
+      el.outputDir.value = config.output_dir || job.output_dir || ".";
+      el.positions.value = job.positions || job.xy || "";
+      el.adjacency.value = job.adjacency || job.adj || "";
+      el.adjacencyFormat.value = job.adjacency_format || "auto";
+      el.materialMatrix.value = job.material_matrix || job.materials_matrix || "";
+      el.edgeMaterials.value = job.edge_materials || "";
+      el.materialMode.value = job.material_matrix || job.materials_matrix
+        ? "matrix"
+        : job.edge_materials
+          ? "edge_table"
+          : (el.adjacencyFormat.value === "edge_list" ? "edge_column" : "default");
+      el.beamDiameter.value = geometry.beam_diameter_mm || geometry.beam_diameter || 1;
+      el.sideLength.value = geometry.cube_side_length_mm || geometry.cube_side_length || 1;
+      el.junctionPolicy.value = geometry.junction_policy || "separate";
+      el.variableThickness.checked = Boolean(geometry.variable_thickness);
+      el.booleanUnion.checked = geometry.boolean_union !== false;
+
+      materialsBody.innerHTML = "";
+      const entries = Object.keys(materials).length
+        ? Object.entries(materials).map(([name, value]) => [name, (value && value.color) || "#2563eb"])
+        : defaultMaterials;
+      entries.forEach(([name, color]) => addMaterialRow(name, color));
+      updateMaterialSelects();
+      el.defaultMaterial.value = job.default_material || config.default_material || materialEntries()[0]?.[0] || "default";
+      el.nodeMaterial.value = geometry.node_material || "";
+      el.mixedJunctionMaterial.value = geometry.mixed_junction_material || "junctions";
+      jsonDirty = false;
+      render({ forceJson: true });
+    }
+
+    async function loadConfig(path) {
+      const payload = await post("/load", { path });
+      loadConfigObject(JSON.parse(payload.text), payload.path);
+      setStatus("Config loaded");
+    }
+
     function renderResult(result) {
       if (!result || !result.jobs) {
         resultEl.innerHTML = "";
@@ -266,8 +713,8 @@ PAGE = """<!doctype html>
       resultEl.innerHTML = result.jobs.map(job => {
         const rows = (job.outputs || []).map(output => `
           <tr>
-            <td>${output.material}</td>
-            <td>${output.faces}</td>
+            <td>${escapeHtml(output.material)}</td>
+            <td>${escapeHtml(output.faces)}</td>
             <td>${output.watertight ? "yes" : "no"}</td>
             <td>${fileLink(output.path, output.path)}</td>
           </tr>
@@ -276,8 +723,11 @@ PAGE = """<!doctype html>
           ? `<p>${fileLink(job.preview.path, "Open material preview")}</p>`
           : "";
         return `
-          <h2>${job.name}</h2>
-          <p>${job.edge_count} edges, ${job.material_count} STL files</p>
+          <div class="summary">
+            <div class="metric"><strong>${escapeHtml(job.edge_count)}</strong><span>Edges</span></div>
+            <div class="metric"><strong>${escapeHtml(job.material_count)}</strong><span>STL files</span></div>
+            <div class="metric"><strong>${escapeHtml(job.name)}</strong><span>Job</span></div>
+          </div>
           <table>
             <thead><tr><th>Material</th><th>Faces</th><th>Watertight</th><th>File</th></tr></thead>
             <tbody>${rows}</tbody>
@@ -287,17 +737,25 @@ PAGE = """<!doctype html>
       }).join("");
     }
 
-    async function loadConfig(path) {
-      const payload = await post("/load", {path});
-      config.value = payload.text;
-      configPath.value = payload.path;
-      setStatus("Config loaded");
+    async function chooseFile(target, kind) {
+      const payload = await post("/pick-file", { kind, initial: el[target].value });
+      el[target].value = payload.path;
+      render({ forceJson: true });
+      return payload.path;
     }
 
-    document.getElementById("load").addEventListener("click", async () => {
+    async function chooseDirectory(target) {
+      const payload = await post("/pick-directory", { initial: el[target].value });
+      el[target].value = payload.path;
+      render({ forceJson: true });
+      return payload.path;
+    }
+
+    document.getElementById("openConfig").addEventListener("click", async () => {
       setBusy(true);
       try {
-        await loadConfig(configPath.value);
+        const path = await chooseFile("configPath", "config");
+        await loadConfig(path);
       } catch (error) {
         setStatus(error.message, true);
       } finally {
@@ -305,11 +763,26 @@ PAGE = """<!doctype html>
       }
     });
 
-    document.getElementById("save").addEventListener("click", async () => {
+    document.getElementById("saveConfig").addEventListener("click", async () => {
       setBusy(true);
       try {
-        const payload = await post("/save", {path: configPath.value, text: config.value});
-        configPath.value = payload.path;
+        const payload = await post("/save", { path: el.configPath.value, text: el.configJson.value });
+        el.configPath.value = payload.path;
+        setStatus("Config saved");
+      } catch (error) {
+        setStatus(error.message, true);
+      } finally {
+        setBusy(false);
+      }
+    });
+
+    document.getElementById("saveConfigAs").addEventListener("click", async () => {
+      setBusy(true);
+      try {
+        const picked = await post("/pick-save-file", { kind: "config", initial: el.configPath.value });
+        el.configPath.value = picked.path;
+        const payload = await post("/save", { path: el.configPath.value, text: el.configJson.value });
+        el.configPath.value = payload.path;
         setStatus("Config saved");
       } catch (error) {
         setStatus(error.message, true);
@@ -324,26 +797,37 @@ PAGE = """<!doctype html>
       setStatus("Generating STL files...");
       try {
         const payload = await post("/generate", {
-          config_path: configPath.value,
-          config_text: config.value
+          config_path: el.configPath.value,
+          config_text: el.configJson.value
         });
         renderResult(payload.result);
         setStatus("STL generation complete");
       } catch (error) {
-        resultEl.innerHTML = `<pre>${error.message}</pre>`;
+        resultEl.innerHTML = `<pre>${escapeHtml(error.message)}</pre>`;
         setStatus("Generation failed", true);
       } finally {
         setBusy(false);
       }
     });
 
-    document.getElementById("demo").addEventListener("click", async () => {
+    document.getElementById("loadDemo").addEventListener("click", async () => {
       setBusy(true);
-      setStatus("Creating random-material edge-list demo...");
       try {
-        const payload = await post("/demo", {});
-        await loadConfig(payload.config_path);
-        setStatus(`Demo config created from ${payload.source}`);
+        const preset = el.demoPreset.value;
+        if (preset === "sample") {
+          await loadConfig("sample_configs/multimaterial_test.json");
+          setStatus("Sample matrix config loaded");
+        } else if (preset === "edge") {
+          setStatus("Creating random-material edge-list demo...");
+          const payload = await post("/demo", {});
+          await loadConfig(payload.config_path);
+          setStatus(`Demo config created from ${payload.source}`);
+        } else {
+          setStatus("Creating Voronoi random-material demo...");
+          const payload = await post("/voronoi-demo", {});
+          await loadConfig(payload.config_path);
+          setStatus(`Voronoi demo loaded: ${payload.node_count} nodes, ${payload.edge_count} edges`);
+        }
       } catch (error) {
         setStatus(error.message, true);
       } finally {
@@ -351,22 +835,67 @@ PAGE = """<!doctype html>
       }
     });
 
-    document.getElementById("voronoiDemo").addEventListener("click", async () => {
-      setBusy(true);
-      setStatus("Creating Voronoi random-material demo...");
+    document.getElementById("addMaterial").addEventListener("click", () => {
+      addMaterialRow("material", "#2563eb");
+      render({ forceJson: true });
+    });
+
+    document.getElementById("applyJson").addEventListener("click", () => {
       try {
-        const payload = await post("/voronoi-demo", {});
-        await loadConfig(payload.config_path);
-        setStatus(`Voronoi demo loaded: ${payload.node_count} nodes, ${payload.edge_count} edges`);
+        loadConfigObject(JSON.parse(el.configJson.value), el.configPath.value);
+        setStatus("JSON applied to form");
       } catch (error) {
         setStatus(error.message, true);
-      } finally {
-        setBusy(false);
       }
+    });
+
+    document.getElementById("refreshJson").addEventListener("click", () => {
+      jsonDirty = false;
+      render({ forceJson: true });
+      setStatus("JSON refreshed from form");
+    });
+
+    document.querySelectorAll(".browse").forEach(button => {
+      button.addEventListener("click", async () => {
+        setBusy(true);
+        try {
+          await chooseFile(button.dataset.target, button.dataset.kind);
+        } catch (error) {
+          setStatus(error.message, true);
+        } finally {
+          setBusy(false);
+        }
+      });
+    });
+
+    document.querySelectorAll(".browse-dir").forEach(button => {
+      button.addEventListener("click", async () => {
+        setBusy(true);
+        try {
+          await chooseDirectory(button.dataset.target);
+        } catch (error) {
+          setStatus(error.message, true);
+        } finally {
+          setBusy(false);
+        }
+      });
+    });
+
+    ["input", "change"].forEach(eventName => {
+      document.querySelectorAll("input, select").forEach(node => {
+        if (node.id === "configJson") return;
+        node.addEventListener(eventName, () => render({ forceJson: true }));
+      });
+    });
+    el.configJson.addEventListener("input", () => {
+      jsonDirty = true;
+      setStatus("Advanced JSON edited. Generate will use the JSON text.", false);
     });
 
     loadConfig("sample_configs/multimaterial_test.json").catch(error => {
       setStatus(error.message, true);
+      defaultMaterials.forEach(([name, color]) => addMaterialRow(name, color));
+      render({ forceJson: true });
     });
   </script>
 </body>
@@ -375,7 +904,7 @@ PAGE = """<!doctype html>
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "MaterialSTLGenerator/1.0"
+    server_version = "MaterialSTLGenerator/1.1"
 
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
@@ -402,8 +931,16 @@ class Handler(BaseHTTPRequestHandler):
                 self._demo()
             elif parsed.path == "/voronoi-demo":
                 self._voronoi_demo()
+            elif parsed.path == "/pick-file":
+                self._pick_file(payload)
+            elif parsed.path == "/pick-save-file":
+                self._pick_save_file(payload)
+            elif parsed.path == "/pick-directory":
+                self._pick_directory(payload)
             else:
                 self.send_error(HTTPStatus.NOT_FOUND)
+        except ValueError as exc:
+            self._send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
         except Exception as exc:
             self._send_json(
                 {"error": f"{exc}\n\n{traceback.format_exc()}"},
@@ -442,6 +979,26 @@ class Handler(BaseHTTPRequestHandler):
         result = generate_voronoi_demo()
         self._send_json(result)
 
+    def _pick_file(self, payload: Dict[str, Any]) -> None:
+        path = _pick_path(
+            mode="open",
+            kind=str(payload.get("kind") or "file"),
+            initial=payload.get("initial"),
+        )
+        self._send_json({"path": path})
+
+    def _pick_save_file(self, payload: Dict[str, Any]) -> None:
+        path = _pick_path(
+            mode="save",
+            kind=str(payload.get("kind") or "config"),
+            initial=payload.get("initial"),
+        )
+        self._send_json({"path": path})
+
+    def _pick_directory(self, payload: Dict[str, Any]) -> None:
+        path = _pick_path(mode="directory", kind="directory", initial=payload.get("initial"))
+        self._send_json({"path": path})
+
     def _read_json(self) -> Dict[str, Any]:
         length = int(self.headers.get("Content-Length", "0"))
         raw = self.rfile.read(length).decode("utf-8")
@@ -477,6 +1034,88 @@ def _resolve_path(value: Any) -> Path:
     if not path.is_absolute():
         path = Path.cwd() / path
     return path.resolve()
+
+
+def _pick_path(mode: str, kind: str, initial: Any = None) -> str:
+    try:
+        import tkinter as tk
+        from tkinter import filedialog
+    except ImportError as exc:
+        raise ValueError("The Browse buttons require tkinter. Paste the path into the field instead.") from exc
+
+    initial_path = _initial_dialog_path(initial)
+    try:
+        root = tk.Tk()
+    except tk.TclError as exc:
+        raise ValueError("Could not open a file picker in this environment. Paste the path into the field instead.") from exc
+    root.withdraw()
+    try:
+        root.attributes("-topmost", True)
+    except tk.TclError:
+        pass
+    try:
+        if mode == "open":
+            selected = filedialog.askopenfilename(
+                parent=root,
+                title=_dialog_title(kind),
+                initialdir=str(initial_path[0]),
+                filetypes=_dialog_filetypes(kind),
+            )
+        elif mode == "save":
+            selected = filedialog.asksaveasfilename(
+                parent=root,
+                title="Save config JSON",
+                initialdir=str(initial_path[0]),
+                initialfile=initial_path[1],
+                defaultextension=".json",
+                filetypes=_dialog_filetypes(kind),
+            )
+        elif mode == "directory":
+            selected = filedialog.askdirectory(
+                parent=root,
+                title="Choose output folder",
+                initialdir=str(initial_path[0]),
+            )
+        else:
+            raise ValueError(f"Unknown picker mode: {mode}")
+    except tk.TclError as exc:
+        raise ValueError("Could not open a file picker in this environment. Paste the path into the field instead.") from exc
+    finally:
+        root.destroy()
+
+    if not selected:
+        raise ValueError("No file selected.")
+    return str(Path(selected).expanduser().resolve())
+
+
+def _initial_dialog_path(value: Any) -> Tuple[Path, str]:
+    if value:
+        path = _resolve_path(value)
+        if path.is_dir():
+            return path, ""
+        return path.parent if path.parent.exists() else Path.cwd(), path.name
+    return Path.cwd(), ""
+
+
+def _dialog_title(kind: str) -> str:
+    titles = {
+        "config": "Open config JSON",
+        "positions": "Choose node positions file",
+        "adjacency": "Choose adjacency or edge-list file",
+        "material_matrix": "Choose material matrix file",
+        "edge_materials": "Choose edge-material table",
+    }
+    return titles.get(kind, "Choose file")
+
+
+def _dialog_filetypes(kind: str) -> Iterable[Tuple[str, str]]:
+    if kind == "config":
+        return [("JSON files", "*.json"), ("All files", "*")]
+    if kind == "edge_materials":
+        return [("CSV files", "*.csv"), ("All files", "*")]
+    if kind in {"positions", "adjacency", "material_matrix"}:
+        return [("CSV and NumPy files", "*.csv *.npy"), ("CSV files", "*.csv"), ("NumPy files", "*.npy"), ("All files", "*")]
+    return [("All files", "*")]
 
 
 def main() -> None:

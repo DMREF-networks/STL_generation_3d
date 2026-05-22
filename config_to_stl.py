@@ -295,13 +295,14 @@ def _load_edge_list(
         except (IndexError, ValueError) as exc:
             raise ValueError(f"Invalid edge endpoints in {path} line {line_number}: {row}") from exc
 
-        weight = 1.0
-        if variable_thickness and thickness_col is not None and thickness_col < len(row):
-            weight = float(row[thickness_col])
-
-        material = default_material
-        if material_col is not None and material_col < len(row):
-            material = _clean_material(row[material_col], default_material)
+        weight = _edge_weight_from_row(
+            row,
+            thickness_col,
+            variable_thickness,
+            has_header=header is not None,
+            source=f"{path} line {line_number}",
+        )
+        material = _edge_material_from_row(row, material_col, default_material, has_header=header is not None)
         material = material_lookup.get(_edge_key(source, target), material)
         if weight > 0:
             edges.append(Edge(source, target, weight, material))
@@ -342,16 +343,22 @@ def _edges_from_string_edge_rows(
         return []
     header = _header_map(rows[0]) if _looks_like_header(rows[0]) else None
     data_rows = rows[1:] if header else rows
-    source_col = _column_index("source", header, 0)
-    target_col = _column_index("target", header, 1)
-    thickness_col = _column_index("thickness", header, 2)
-    material_col = _column_index("material", header, 3)
+    source_col = _column_index(None, header, 0)
+    target_col = _column_index(None, header, 1)
+    thickness_col = _column_index(None, header, 2)
+    material_col = _column_index(None, header, 3)
     edges = []
-    for row in data_rows:
+    for line_number, row in enumerate(data_rows, start=2 if header else 1):
         source = int(float(row[source_col]))
         target = int(float(row[target_col]))
-        weight = float(row[thickness_col]) if variable_thickness and thickness_col is not None and len(row) > thickness_col else 1.0
-        material = _clean_material(row[material_col], default_material) if material_col is not None and len(row) > material_col else default_material
+        weight = _edge_weight_from_row(
+            row,
+            thickness_col,
+            variable_thickness,
+            has_header=header is not None,
+            source=f"edge row {line_number}",
+        )
+        material = _edge_material_from_row(row, material_col, default_material, has_header=header is not None)
         material = material_lookup.get(_edge_key(source, target), material)
         if weight > 0:
             edges.append(Edge(source, target, weight, material))
@@ -689,7 +696,7 @@ def _column_index(value: Any, header: Optional[Mapping[str, int]], fallback: Opt
         if fallback == 1:
             return header.get("target", fallback)
         if fallback == 2:
-            return header.get("thickness", fallback)
+            return header.get("thickness")
         if fallback == 3:
             return header.get("material")
         return fallback
@@ -706,6 +713,49 @@ def _column_index(value: Any, header: Optional[Mapping[str, int]], fallback: Opt
             raise ValueError(f"Column '{value}' was not found in the header.")
         return header[canonical]
     raise ValueError(f"Invalid column selector: {value!r}")
+
+
+def _edge_weight_from_row(
+    row: List[str],
+    thickness_col: Optional[int],
+    variable_thickness: bool,
+    has_header: bool,
+    source: str,
+) -> float:
+    if not variable_thickness or thickness_col is None or thickness_col >= len(row):
+        return 1.0
+
+    value = _float_or_none(row[thickness_col])
+    if value is not None:
+        return value
+
+    # Headerless three-column files are ambiguous: source,target,thickness
+    # and source,target,material are both common. Text in the third column is
+    # treated as material, with default thickness.
+    if not has_header and len(row) == 3 and thickness_col == 2:
+        return 1.0
+
+    raise ValueError(f"Invalid edge thickness in {source}: {row[thickness_col]!r}")
+
+
+def _edge_material_from_row(
+    row: List[str],
+    material_col: Optional[int],
+    default_material: str,
+    has_header: bool,
+) -> str:
+    if material_col is not None and material_col < len(row):
+        return _clean_material(row[material_col], default_material)
+    if not has_header and len(row) == 3 and _float_or_none(row[2]) is None:
+        return _clean_material(row[2], default_material)
+    return default_material
+
+
+def _float_or_none(value: Any) -> Optional[float]:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _merged_object(parent: Any, child: Any) -> Dict[str, Any]:
