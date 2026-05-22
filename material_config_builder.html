@@ -1,0 +1,514 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Material Config Builder</title>
+  <style>
+    :root {
+      --bg: #f4f6f8;
+      --panel: #ffffff;
+      --border: #d4dae3;
+      --text: #1f2937;
+      --muted: #5b6472;
+      --accent: #0f766e;
+      --accent-dark: #115e59;
+      --danger: #b91c1c;
+      --code: #111827;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 14px;
+      line-height: 1.4;
+    }
+    header {
+      height: 56px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 0 18px;
+      border-bottom: 1px solid var(--border);
+      background: var(--panel);
+    }
+    h1 {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 650;
+      letter-spacing: 0;
+    }
+    main {
+      display: grid;
+      grid-template-columns: minmax(440px, 1fr) minmax(420px, 0.9fr);
+      gap: 14px;
+      padding: 14px;
+      min-height: calc(100vh - 56px);
+    }
+    section {
+      min-width: 0;
+      border: 1px solid var(--border);
+      background: var(--panel);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .section-head {
+      height: 42px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 0 12px;
+      border-bottom: 1px solid var(--border);
+      background: #fbfcfd;
+    }
+    h2 {
+      margin: 0;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .content {
+      padding: 12px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+    label {
+      display: grid;
+      gap: 5px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 650;
+    }
+    input, select, textarea {
+      width: 100%;
+      min-width: 0;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: #fff;
+      color: var(--text);
+      font: inherit;
+    }
+    input, select {
+      height: 34px;
+      padding: 0 9px;
+    }
+    input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+      padding: 0;
+    }
+    input[type="color"] {
+      padding: 2px;
+    }
+    .check {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 34px;
+      color: var(--text);
+      font-size: 14px;
+      font-weight: 500;
+    }
+    .stack {
+      display: grid;
+      gap: 12px;
+    }
+    .row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      min-width: 0;
+    }
+    button {
+      height: 34px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0 12px;
+      background: white;
+      color: var(--text);
+      font: inherit;
+      font-weight: 650;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    button.primary {
+      border-color: var(--accent);
+      background: var(--accent);
+      color: white;
+    }
+    button.primary:hover { background: var(--accent-dark); }
+    button.icon {
+      width: 34px;
+      padding: 0;
+      font-size: 18px;
+      line-height: 1;
+    }
+    table {
+      width: 100%;
+      table-layout: fixed;
+      border-collapse: collapse;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    th, td {
+      padding: 7px;
+      border-bottom: 1px solid var(--border);
+      text-align: left;
+    }
+    th {
+      color: var(--muted);
+      background: #fbfcfd;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    tr:last-child td { border-bottom: 0; }
+    td:last-child, th:last-child {
+      width: 48px;
+      text-align: center;
+    }
+    textarea {
+      min-height: 520px;
+      resize: vertical;
+      padding: 12px;
+      color: var(--code);
+      font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+      tab-size: 2;
+    }
+    .command {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 9px 10px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: #fbfcfd;
+      color: var(--code);
+      font: 13px ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+      overflow-wrap: anywhere;
+    }
+    .status {
+      min-height: 22px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .status.error { color: var(--danger); }
+    .full { grid-column: 1 / -1; }
+    @media (max-width: 980px) {
+      main { grid-template-columns: 1fr; }
+      .grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Material Config Builder</h1>
+    <div class="row">
+      <input id="loadFile" type="file" accept="application/json,.json" aria-label="Load config JSON">
+      <button id="download" class="primary">Download Config</button>
+    </div>
+  </header>
+
+  <main>
+    <section>
+      <div class="section-head">
+        <h2>Config</h2>
+        <button id="reset">Reset</button>
+      </div>
+      <div class="content stack">
+        <div class="grid">
+          <label>Job name
+            <input id="jobName" value="test_multimaterial">
+          </label>
+          <label>Output directory
+            <input id="outputDir" value="samples_output/material_demo">
+          </label>
+          <label>Positions file
+            <input id="positions" value="sample_configs/demo_xy.csv">
+          </label>
+          <label>Adjacency file
+            <input id="adjacency" value="sample_configs/demo_adj.csv">
+          </label>
+          <label>Adjacency format
+            <select id="adjacencyFormat">
+              <option value="matrix">matrix</option>
+              <option value="edge_list">edge_list</option>
+              <option value="auto">auto</option>
+            </select>
+          </label>
+          <label>Material matrix
+            <input id="materialMatrix" value="sample_configs/demo_material_matrix.csv">
+          </label>
+          <label>Edge-material table
+            <input id="edgeMaterials" placeholder="optional CSV path">
+          </label>
+          <label>Default material
+            <input id="defaultMaterial" value="rigid">
+          </label>
+          <label>Beam diameter mm
+            <input id="beamDiameter" type="number" step="0.001" min="0" value="0.25">
+          </label>
+          <label>Side length mm
+            <input id="sideLength" type="number" step="0.001" min="0" value="30">
+          </label>
+          <label>Junction policy
+            <select id="junctionPolicy">
+              <option value="separate">separate</option>
+              <option value="dominant">dominant</option>
+              <option value="per_material">per_material</option>
+            </select>
+          </label>
+          <label>Mixed junction material
+            <input id="mixedJunctionMaterial" value="junctions">
+          </label>
+          <label class="check">
+            <input id="variableThickness" type="checkbox" checked>
+            Variable thickness
+          </label>
+          <label class="check">
+            <input id="booleanUnion" type="checkbox" checked>
+            Boolean union
+          </label>
+        </div>
+
+        <div class="stack">
+          <div class="section-head" style="height: 36px; padding: 0;">
+            <h2>Materials</h2>
+            <button id="addMaterial">Add Material</button>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Preview color</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="materialsBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-head">
+        <h2>Output</h2>
+        <div class="row">
+          <button id="copyJson">Copy JSON</button>
+          <button id="copyCommand">Copy Command</button>
+        </div>
+      </div>
+      <div class="content stack">
+        <label>Config filename
+          <input id="configFileName" value="material_config.json">
+        </label>
+        <div id="command" class="command">python config_to_stl.py material_config.json</div>
+        <textarea id="jsonPreview" spellcheck="false"></textarea>
+        <div id="status" class="status">Ready</div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const defaults = {
+      materials: [
+        ["rigid", "#2563eb"],
+        ["flexible", "#dc2626"],
+        ["conductive", "#059669"],
+        ["junctions", "#4b5563"]
+      ]
+    };
+
+    const defaultConfig = {
+      output_dir: "samples_output/material_demo",
+      default_material: "rigid",
+      geometry: {
+        beam_diameter_mm: 0.25,
+        cube_side_length_mm: 30,
+        variable_thickness: true,
+        junction_policy: "separate",
+        mixed_junction_material: "junctions",
+        boolean_union: true
+      },
+      materials: Object.fromEntries(defaults.materials.map(([name, color]) => [name, { color }])),
+      jobs: [{
+        name: "test_multimaterial",
+        positions: "sample_configs/demo_xy.csv",
+        adjacency: "sample_configs/demo_adj.csv",
+        adjacency_format: "matrix",
+        material_matrix: "sample_configs/demo_material_matrix.csv"
+      }]
+    };
+
+    const ids = [
+      "jobName", "outputDir", "positions", "adjacency", "adjacencyFormat",
+      "materialMatrix", "edgeMaterials", "defaultMaterial", "beamDiameter",
+      "sideLength", "junctionPolicy", "mixedJunctionMaterial",
+      "variableThickness", "booleanUnion", "configFileName"
+    ];
+
+    const el = Object.fromEntries(ids.map(id => [id, document.getElementById(id)]));
+    const materialsBody = document.getElementById("materialsBody");
+    const jsonPreview = document.getElementById("jsonPreview");
+    const command = document.getElementById("command");
+    const status = document.getElementById("status");
+
+    function setStatus(text, error = false) {
+      status.textContent = text;
+      status.classList.toggle("error", error);
+    }
+
+    function addMaterialRow(name = "", color = "#2563eb") {
+      const row = document.createElement("tr");
+      row.innerHTML = `
+        <td><input class="material-name" value="${escapeAttr(name)}"></td>
+        <td><input class="material-color" type="color" value="${escapeAttr(color)}"></td>
+        <td><button class="icon remove-material" title="Remove material" aria-label="Remove material">x</button></td>
+      `;
+      materialsBody.appendChild(row);
+      row.querySelector(".remove-material").addEventListener("click", () => {
+        row.remove();
+        render();
+      });
+      row.querySelectorAll("input").forEach(input => input.addEventListener("input", render));
+    }
+
+    function escapeAttr(value) {
+      return String(value).replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("<", "&lt;");
+    }
+
+    function materialsObject() {
+      const result = {};
+      materialsBody.querySelectorAll("tr").forEach(row => {
+        const name = row.querySelector(".material-name").value.trim();
+        const color = row.querySelector(".material-color").value;
+        if (name) result[name] = { color };
+      });
+      return result;
+    }
+
+    function buildConfig() {
+      const job = {
+        name: el.jobName.value.trim() || "network",
+        positions: el.positions.value.trim(),
+        adjacency: el.adjacency.value.trim(),
+        adjacency_format: el.adjacencyFormat.value
+      };
+      if (el.materialMatrix.value.trim()) job.material_matrix = el.materialMatrix.value.trim();
+      if (el.edgeMaterials.value.trim()) job.edge_materials = el.edgeMaterials.value.trim();
+
+      return {
+        output_dir: el.outputDir.value.trim() || ".",
+        default_material: el.defaultMaterial.value.trim() || "default",
+        geometry: {
+          beam_diameter_mm: Number(el.beamDiameter.value),
+          cube_side_length_mm: Number(el.sideLength.value),
+          variable_thickness: el.variableThickness.checked,
+          junction_policy: el.junctionPolicy.value,
+          mixed_junction_material: el.mixedJunctionMaterial.value.trim() || "junctions",
+          boolean_union: el.booleanUnion.checked
+        },
+        materials: materialsObject(),
+        jobs: [job]
+      };
+    }
+
+    function render() {
+      const config = buildConfig();
+      jsonPreview.value = JSON.stringify(config, null, 2);
+      const filename = el.configFileName.value.trim() || "material_config.json";
+      command.textContent = `python config_to_stl.py ${filename}`;
+      validate(config);
+    }
+
+    function validate(config) {
+      const errors = [];
+      if (!config.jobs[0].positions) errors.push("Positions file is required.");
+      if (!config.jobs[0].adjacency) errors.push("Adjacency file is required.");
+      if (!(config.geometry.beam_diameter_mm > 0)) errors.push("Beam diameter must be greater than zero.");
+      if (!(config.geometry.cube_side_length_mm > 0)) errors.push("Side length must be greater than zero.");
+      if (Object.keys(config.materials).length === 0) errors.push("At least one material is required.");
+      if (errors.length) setStatus(errors.join(" "), true);
+      else setStatus("Ready");
+    }
+
+    function loadConfig(config) {
+      const job = (config.jobs && config.jobs[0]) || config;
+      const geometry = config.geometry || job.geometry || {};
+      el.jobName.value = job.name || "network";
+      el.outputDir.value = config.output_dir || job.output_dir || ".";
+      el.positions.value = job.positions || job.xy || "";
+      el.adjacency.value = job.adjacency || job.adj || "";
+      el.adjacencyFormat.value = job.adjacency_format || "auto";
+      el.materialMatrix.value = job.material_matrix || job.materials_matrix || "";
+      el.edgeMaterials.value = job.edge_materials || "";
+      el.defaultMaterial.value = job.default_material || config.default_material || "default";
+      el.beamDiameter.value = geometry.beam_diameter_mm || geometry.beam_diameter || 1;
+      el.sideLength.value = geometry.cube_side_length_mm || geometry.cube_side_length || 1;
+      el.junctionPolicy.value = geometry.junction_policy || "separate";
+      el.mixedJunctionMaterial.value = geometry.mixed_junction_material || "junctions";
+      el.variableThickness.checked = Boolean(geometry.variable_thickness);
+      el.booleanUnion.checked = geometry.boolean_union !== false;
+
+      materialsBody.innerHTML = "";
+      const materials = config.materials || job.materials || {};
+      const entries = Object.keys(materials).length
+        ? Object.entries(materials).map(([name, value]) => [name, (value && value.color) || "#2563eb"])
+        : defaults.materials;
+      entries.forEach(([name, color]) => addMaterialRow(name, color));
+      render();
+    }
+
+    function downloadConfig() {
+      const blob = new Blob([jsonPreview.value + "\n"], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = el.configFileName.value.trim() || "material_config.json";
+      link.click();
+      URL.revokeObjectURL(url);
+    }
+
+    async function copyText(text) {
+      await navigator.clipboard.writeText(text);
+      setStatus("Copied");
+    }
+
+    document.getElementById("addMaterial").addEventListener("click", () => {
+      addMaterialRow("material", "#2563eb");
+      render();
+    });
+    document.getElementById("download").addEventListener("click", downloadConfig);
+    document.getElementById("copyJson").addEventListener("click", () => copyText(jsonPreview.value));
+    document.getElementById("copyCommand").addEventListener("click", () => copyText(command.textContent));
+    document.getElementById("reset").addEventListener("click", () => loadConfig(defaultConfig));
+    document.getElementById("loadFile").addEventListener("change", async event => {
+      const file = event.target.files[0];
+      if (!file) return;
+      try {
+        loadConfig(JSON.parse(await file.text()));
+        el.configFileName.value = file.name;
+        render();
+      } catch (error) {
+        setStatus(error.message, true);
+      }
+    });
+    ids.forEach(id => {
+      const node = el[id];
+      node.addEventListener(node.type === "checkbox" ? "change" : "input", render);
+    });
+
+    loadConfig(defaultConfig);
+  </script>
+</body>
+</html>

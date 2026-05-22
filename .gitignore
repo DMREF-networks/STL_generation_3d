@@ -6,5 +6,6 @@ csvFiles/
 output.txt
 *.html
 *.stl
+!material_config_builder.html
 !samples_output/*.html
 !samples_output/*.stl

@@ -1,137 +1,215 @@
-# STL_Generation
+# STL Generation 3D
 
-## Overview
-STL_Generation is a tool developed to facilitate the transformation of 3D point cloud data (in either .npy or .csv format) into 3D STL files. 
+STL Generation 3D converts network data into 3D-printable STL meshes.
+Inputs are node positions plus connectivity data, either as CSV files or
+NumPy `.npy` files. Outputs are STL files and optional HTML previews.
 
-## Purpose
-- Converts point cloud files into 3D STL files, enabling the physical representation of abstract data. Users can adjust the width of the connection beams and the height of the 3D model, offering flexibility to meet specific modeling requirements.
+## Setup
 
-## Directions
-
-**To get started,** clone the repository and navigate to the project directory:
+Clone the repository and install the Python dependencies:
 
 ```bash
-git clone https://github.com/DMREF-networks/STL_generation.git
-cd STL_generation
+git clone https://github.com/DMREF-networks/STL_generation_3d.git
+cd STL_generation_3d
+python -m pip install -r requirements.txt
 ```
 
-**Next, install the required dependencies:**
-```bash
-pip3 install -r requirements.txt
+The project uses `trimesh`, `manifold3d`, `shapely`, `numpy`, `scipy`,
+`matplotlib`, and `plotly`.
+
+## Input Files
+
+Each network needs:
+
+- an `xy` file containing node positions
+- an `adj` file containing connectivity
+
+The interactive converter pairs files by name:
+
+```text
+name_xy.csv
+name_adj.csv
 ```
 
-**To run the conversion:**
-1. Create a directory with the numpy files for each set of points you want to convert. Make sure to have both the adj files and xy numpy files for each set of points in the folder. Alternatively, you can use the provided test samples for any of the 4 available configuration types (delaunay, delaunay_centroidal, gabriel, or voronoi).
+or:
 
-2.  Run the script:
-
-```bash
-python3 npyToSTLScript.py
+```text
+name_xy.npy
+name_adj.npy
 ```
 
-3. You will then be prompted by the program to choose what file format your files are in. For now, the program only supports .csv and .npy. 
+Suffixes after `_xy` and `_adj` are preserved, so these are also paired:
 
-4. When prompted by the program, enter the path to the directory where you stored the npy or csv files (adj and xy). 
+```text
+network_xy_0.1.npy
+network_adj_0.1.npy
+```
 
-IMPORTANT NOTE: If the folder contains the point clouds and adjacency matrices for more than one STL file, make sure they are all either csv OR npy. The code currently does not support a mix. Furthermore, the matching between the xy and adj files relies on the fact that the files are in the following format: 
+Position files may have two columns (`x, y`) or three columns
+(`x, y, z`). Two-dimensional positions are automatically placed on
+`z = 0`.
 
-name_adj.csv, name_xy.csv OR name_adj.npy, name_xy.npy
+Adjacency data can be either:
 
-Files may include matching suffixes after `_adj` and `_xy` (for example,
-`network_adj_0.1.npy` and `network_xy_0.1.npy`). Those suffixes are
-preserved in the STL and HTML output names.
+- a square adjacency matrix, where nonzero entries are edges
+- an edge list, usually `(source, target)` or `(source, target, weight)`
 
-5. Next, you will be prompted for the desired matrix side length, desired
-beam diameter, whether to use variable beam thickness, and the meshing
-method.
+For `.npy` edge-list inputs, the existing sample data uses an `(E, 3)`
+array.
 
-6. The program will then generate the STL and HTML files, which will show
-up in the project directory. NumPy inputs are converted through a
-temporary per-run directory, so stale `csvFiles` or `output.txt` files
-from earlier runs are ignored. Python may still create a `__pycache__`
-folder. To delete old byproducts from previous versions, run the
-following commands:
+## Standard STL Generation
 
-For MacOS/Linux:
+Run the interactive script:
 
 ```bash
-chmod +x clean.sh
+python npyToSTLScript.py
+```
 
+The script prompts for:
+
+- input type: `csv` or `npy`
+- input directory
+- beam diameter in millimeters
+- model side length in millimeters
+- whether adjacency values should control beam thickness
+- meshing method: `cylinders` or `planar`
+
+Generated STL and HTML preview files are written to the current working
+directory.
+
+## Beam Thickness
+
+By default, adjacency values are treated as binary connectivity. Every
+nonzero edge uses the beam diameter entered at the prompt.
+
+If variable thickness is enabled, adjacency values become scale factors:
+
+```text
+edge_diameter = beam_diameter * adjacency_value
+```
+
+For `.npy` edge-list inputs, the third column is used as the thickness
+weight only when variable thickness is enabled. Otherwise every edge
+uses weight `1.0`.
+
+## Meshing Methods
+
+The converter supports two methods:
+
+- `cylinders`: creates a cylinder for each edge and a sphere at each
+  connected node, then merges the geometry with a 3D boolean union.
+  This works for 2D and 3D networks.
+- `planar`: creates 2D rectangles and discs, unions them with Shapely,
+  then extrudes the result. This is only for flat 2D networks, but it is
+  usually more robust for thin planar networks.
+
+Node junctions are sized per node. Each junction sphere or disc uses the
+thickest beam touching that node. Isolated nodes do not get junction
+geometry.
+
+## Multi-Material STL Output
+
+STL does not reliably store material metadata inside a single file. The
+supported multi-material workflow is to export one STL per material in
+the same coordinate frame. Slicers can then import the files together and
+assign each file to a different material or extruder.
+
+Use the config-driven generator for multi-material output:
+
+```bash
+python config_to_stl.py sample_configs/multimaterial_test.json
+```
+
+That sample writes files like:
+
+```text
+test_multimaterial_rigid.stl
+test_multimaterial_flexible.stl
+test_multimaterial_conductive.stl
+test_multimaterial_junctions.stl
+test_multimaterial_preview.html
+```
+
+### Config Format
+
+Config paths are resolved relative to the JSON config file.
+
+For adjacency matrices, keep the adjacency matrix numeric and add a
+same-shape material matrix:
+
+```json
+{
+  "output_dir": "../samples_output/material_demo",
+  "default_material": "rigid",
+  "geometry": {
+    "beam_diameter_mm": 0.25,
+    "cube_side_length_mm": 30,
+    "variable_thickness": true,
+    "junction_policy": "separate",
+    "mixed_junction_material": "junctions",
+    "boolean_union": true
+  },
+  "jobs": [
+    {
+      "name": "test_multimaterial",
+      "positions": "demo_xy.csv",
+      "adjacency": "demo_adj.csv",
+      "adjacency_format": "matrix",
+      "material_matrix": "demo_material_matrix.csv"
+    }
+  ]
+}
+```
+
+The material matrix must have the same shape as the adjacency matrix.
+Cell `(i, j)` names the material for edge `(i, j)`. Empty, `0`, `none`,
+`null`, or `nan` cells fall back to `default_material`.
+
+For edge-list inputs, material can be carried directly in the edge file:
+
+```csv
+source,target,thickness,material
+0,1,1.0,rigid
+1,2,0.6,flexible
+```
+
+Set `"adjacency_format": "edge_list"` for that layout.
+
+Mixed-material junctions are controlled by `geometry.junction_policy`:
+
+- `separate`: same-material nodes stay with that material; mixed nodes
+  are written to `mixed_junction_material`.
+- `dominant`: mixed nodes go to the material with the largest total
+  incident edge weight.
+- `per_material`: mixed nodes are duplicated into each incident material
+  STL. This can create overlapping geometry.
+
+## Static Config Builder
+
+Open this file directly in a browser:
+
+```text
+material_config_builder.html
+```
+
+The builder creates and downloads JSON config files and shows the command
+to run. A plain local HTML file cannot execute Python meshing code or
+write STL files directly, so STL generation still happens through:
+
+```bash
+python config_to_stl.py material_config.json
+```
+
+## Cleaning Generated Files
+
+Generated Python caches and older byproducts can be removed with:
+
+```bash
 ./clean.sh
-
 ```
 
-For Windows:
+On Windows:
 
-```bash
-.\clean.bat
+```bat
+clean.bat
 ```
-
-## Variable beam thickness
-
-By default, adjacency values are treated as binary connectivity: every
-non-zero entry produces a beam of the diameter you entered at the prompt.
-This is true even when a NumPy `adj` file is an `(E, 3)` edge list. The
-3rd column is ignored unless variable beam thickness is explicitly
-enabled.
-
-To make the thickness vary per beam, answer `y` to the variable-thickness
-prompt (or pass `variable_thickness=True` when calling the Python
-functions), then encode a weight in the adjacency matrix or, for the npy
-path, in a 3rd column of the edge list. The beam diameter for edge (i, j)
-is then
-
-    diameter_ij = beam_diameter * adjacency_matrix[i, j]
-
-So a binary matrix (entries = 1) reproduces the original uniform
-behaviour, and non-binary weights scale each beam independently. Choose
-your weight units so `beam_diameter * weight` lands in millimetres —
-e.g. set the prompt to 1.0 and store the raw diameter in the matrix, or
-set the prompt to a reference diameter and store unit-less scale
-factors.
-
-### Junction sphere sizing
-
-Each junction sphere is sized **per-node** to that node's thickest
-incident beam — *not* a single system-wide value. So a node where only
-thin beams meet gets a thin sphere (no oversized bulge), while a node
-with a thick beam attached gets a sphere large enough to fill the
-junction cavity. Endpoint nodes get a sphere matching their single
-incident beam; isolated nodes get no sphere at all. The same per-node
-rule is used by the planar method for its merge-time discs.
-
-For the npy edge-list path, save `adj` files as an `(E, 3)` array where
-the 3rd column is the weight, then enable variable thickness. `(E, 2)`
-arrays keep working unchanged (weight = 1).
-
-## 2D networks
-
-If your `xy` file has only two columns, the beams will be laid flat on
-the z = 0 plane. No flag needed — the code promotes `(N, 2)` positions
-to `(N, 3)` with `z = 0` automatically.
-
-## HTML viewer
-
-Every STL is accompanied by an interactive `.html` file of the same
-basename. Open it in any browser for a 3D preview of the network, with
-beams coloured by diameter. Requires `plotly` (already listed in
-`requirements.txt`).
-
-## Methods: cylinders vs. planar
-
-The script prompts for a method:
-
-- **`cylinders`** (default): original approach — each beam is a 3D
-  cylinder, junctions are spheres. Works for any network (2D or 3D).
-- **`planar`**: each beam is a 2D rectangle and each node is a 2D disc;
-  shapely unions them in the plane, and the merged polygon is extruded
-  to a single uniform-thickness slab. Only valid for **flat / 2D**
-  networks, but it's dramatically more robust for thin beams, avoids
-  the junction-gap problem entirely, and produces a much smaller mesh
-  (shapely's planar boolean is far more reliable than trimesh's 3D
-  boolean union). Requires `shapely` and prompts for an extrusion depth
-  in millimetres (default = the beam diameter you entered).
-
-Both methods use constant beam thickness by default and respect
-adjacency-matrix / edge-list thickness weights only when variable
-thickness is enabled.
