@@ -48,6 +48,21 @@ class Edge:
     material: str
 
 
+@dataclass(frozen=True)
+class BeamRecord:
+    mesh: trimesh.Trimesh
+    source: int
+    target: int
+    diameter: float
+
+
+@dataclass(frozen=True)
+class NodeReservation:
+    mesh: trimesh.Trimesh
+    radius: float
+    center: Tuple[float, float, float]
+
+
 def generate_from_config_file(config_path: str) -> Dict[str, Any]:
     """Load a JSON config file and generate its configured STL outputs."""
     path = Path(config_path).expanduser().resolve()
@@ -103,8 +118,12 @@ def _generate_job(
     boolean_union = bool(geometry.get("boolean_union", True))
     junction_policy = str(geometry.get("junction_policy", "separate")).strip().lower()
     mixed_junction_material = str(geometry.get("mixed_junction_material", "junctions"))
+    node_radius_scale = float(geometry.get("node_radius_scale", geometry.get("junction_radius_scale", 1.0)))
     node_material = geometry.get("node_material")
     node_material = str(node_material).strip() if node_material is not None else None
+    if not node_material:
+        node_material = None
+    node_material_priority = bool(geometry.get("node_material_priority", node_material is not None))
     default_material = str(job.get("default_material", root_config.get("default_material", "default")))
 
     if beam_diameter <= 0:
@@ -115,6 +134,8 @@ def _generate_job(
         raise ValueError("geometry.sections must be at least 3.")
     if sphere_subdivisions < 0:
         raise ValueError("geometry.sphere_subdivisions must be non-negative.")
+    if node_radius_scale <= 0:
+        raise ValueError("geometry.node_radius_scale must be greater than zero.")
     if junction_policy not in {"separate", "dominant", "per_material"}:
         raise ValueError("geometry.junction_policy must be one of: separate, dominant, per_material.")
 
@@ -133,6 +154,7 @@ def _generate_job(
     _validate_edges(edges, len(positions))
 
     meshes_by_material: Dict[str, List[trimesh.Trimesh]] = defaultdict(list)
+    beam_records_by_material: Dict[str, List[BeamRecord]] = defaultdict(list)
     preview_records = []
     incident: Dict[int, List[Tuple[str, float]]] = defaultdict(list)
 
@@ -146,11 +168,12 @@ def _generate_job(
         if beam is None:
             continue
         meshes_by_material[edge.material].append(beam)
+        beam_records_by_material[edge.material].append(BeamRecord(beam, edge.source, edge.target, diameter))
         preview_records.append((edge.material, start, end, diameter))
         incident[edge.source].append((edge.material, edge.weight))
         incident[edge.target].append((edge.material, edge.weight))
 
-    _add_junction_spheres(
+    node_reservations = _add_junction_spheres(
         positions,
         incident,
         meshes_by_material,
@@ -159,12 +182,21 @@ def _generate_job(
         mixed_junction_material=mixed_junction_material,
         node_material=node_material,
         sphere_subdivisions=sphere_subdivisions,
+        node_radius_scale=node_radius_scale,
     )
 
     outputs = []
     combined_for_preview: Dict[str, trimesh.Trimesh] = {}
     for material in sorted(meshes_by_material):
         meshes = meshes_by_material[material]
+        if node_material_priority and node_reservations and material != node_material:
+            meshes = _apply_node_material_priority(
+                meshes,
+                beam_records_by_material.get(material, []),
+                positions,
+                node_reservations,
+                sections,
+            )
         if not meshes:
             continue
         combined = _combine_meshes(meshes, boolean_union=boolean_union)
@@ -177,7 +209,12 @@ def _generate_job(
         outputs.append(_mesh_result(material, output_path, combined))
 
     preview_path = output_dir / f"{_slug(name)}_preview.html"
-    preview_result = _write_preview_html(combined_for_preview, material_defs, preview_path)
+    preview_result = _write_preview_html(
+        combined_for_preview,
+        material_defs,
+        preview_path,
+        node_material=node_material,
+    )
 
     return {
         "name": name,
@@ -194,6 +231,8 @@ def _generate_job(
             "variable_thickness": variable_thickness,
             "junction_policy": junction_policy,
             "node_material": node_material,
+            "node_material_priority": node_material_priority,
+            "node_radius_scale": node_radius_scale,
             "boolean_union": boolean_union,
         },
     }
@@ -507,12 +546,14 @@ def _add_junction_spheres(
     mixed_junction_material: str,
     node_material: Optional[str],
     sphere_subdivisions: int,
-) -> None:
+    node_radius_scale: float,
+) -> Dict[int, NodeReservation]:
+    node_reservations = {}
     for idx, material_weights in incident.items():
         if not material_weights:
             continue
         max_weight = max(weight for _, weight in material_weights)
-        radius = beam_diameter / 2.0 * max_weight
+        radius = beam_diameter / 2.0 * max_weight * node_radius_scale
         if radius <= 0:
             continue
 
@@ -530,8 +571,138 @@ def _add_junction_spheres(
 
         for material in target_materials:
             sphere = icosphere(radius=radius, subdivisions=sphere_subdivisions)
-            sphere.apply_translation(positions[idx][:3])
+            center = tuple(float(value) for value in positions[idx][:3])
+            sphere.apply_translation(center)
             meshes_by_material[material].append(sphere)
+            if node_material and material == node_material:
+                node_reservations[idx] = NodeReservation(sphere, radius, center)
+    return node_reservations
+
+
+def _apply_node_material_priority(
+    meshes: List[trimesh.Trimesh],
+    beam_records: List[BeamRecord],
+    positions: np.ndarray,
+    node_reservations: Mapping[int, NodeReservation],
+    sections: int,
+) -> List[trimesh.Trimesh]:
+    if not beam_records:
+        return meshes
+
+    protected = []
+    beam_count = min(len(meshes), len(beam_records))
+    for record in beam_records[:beam_count]:
+        source_reservation = node_reservations.get(record.source)
+        target_reservation = node_reservations.get(record.target)
+        if source_reservation is None or target_reservation is None:
+            protected.append(record.mesh)
+            continue
+        cut_mesh = _create_node_cut_beam(
+            positions[record.source][:3],
+            positions[record.target][:3],
+            record.diameter,
+            source_reservation.radius,
+            target_reservation.radius,
+            sections=sections,
+        )
+        if cut_mesh is not None and not cut_mesh.is_empty:
+            protected.append(cut_mesh)
+    protected.extend(meshes[beam_count:])
+    return protected
+
+
+def _create_node_cut_beam(
+    start_point: np.ndarray,
+    end_point: np.ndarray,
+    beam_diameter: float,
+    source_radius: float,
+    target_radius: float,
+    sections: int,
+) -> Optional[trimesh.Trimesh]:
+    vector = np.asarray(end_point, dtype=float) - np.asarray(start_point, dtype=float)
+    length = float(np.linalg.norm(vector))
+    if length < 1e-12:
+        return None
+    direction = vector / length
+    radius = beam_diameter / 2.0
+    source_radius = max(float(source_radius), radius)
+    target_radius = max(float(target_radius), radius)
+    source_offset = math.sqrt(max(source_radius * source_radius - radius * radius, 0.0))
+    target_offset = math.sqrt(max(target_radius * target_radius - radius * radius, 0.0))
+    if source_offset + target_offset >= length:
+        return None
+
+    cap_steps = max(4, min(16, sections // 4))
+    vertices: List[List[float]] = []
+    faces: List[List[int]] = []
+
+    def add_vertex(x: float, y: float, z: float) -> int:
+        vertices.append([x, y, z])
+        return len(vertices) - 1
+
+    def add_ring(ring_radius: float, z: float) -> List[int]:
+        ring = []
+        for k in range(sections):
+            angle = 2.0 * math.pi * k / sections
+            ring.append(add_vertex(ring_radius * math.cos(angle), ring_radius * math.sin(angle), z))
+        return ring
+
+    def connect_rings(lower: List[int], upper: List[int]) -> None:
+        for k in range(sections):
+            k_next = (k + 1) % sections
+            faces.append([lower[k], lower[k_next], upper[k]])
+            faces.append([lower[k_next], upper[k_next], upper[k]])
+
+    def add_center_fan(center: int, ring: List[int], reverse: bool = False) -> None:
+        for k in range(sections):
+            k_next = (k + 1) % sections
+            if reverse:
+                faces.append([center, ring[k_next], ring[k]])
+            else:
+                faces.append([center, ring[k], ring[k_next]])
+
+    source_center = add_vertex(0.0, 0.0, source_radius)
+    source_theta = math.asin(min(1.0, radius / source_radius))
+    previous_ring = None
+    source_rim = None
+    for step in range(1, cap_steps + 1):
+        theta = source_theta * step / cap_steps
+        ring = add_ring(source_radius * math.sin(theta), source_radius * math.cos(theta))
+        if previous_ring is None:
+            add_center_fan(source_center, ring, reverse=True)
+        else:
+            connect_rings(ring, previous_ring)
+        previous_ring = ring
+        source_rim = ring
+
+    target_theta = math.asin(min(1.0, radius / target_radius))
+    target_rim = add_ring(radius, length - target_offset)
+    if source_rim is not None:
+        connect_rings(source_rim, target_rim)
+
+    previous_ring = target_rim
+    for step in range(cap_steps - 1, 0, -1):
+        theta = target_theta * step / cap_steps
+        ring = add_ring(target_radius * math.sin(theta), length - target_radius * math.cos(theta))
+        connect_rings(previous_ring, ring)
+        previous_ring = ring
+    target_center = add_vertex(0.0, 0.0, length - target_radius)
+    add_center_fan(target_center, previous_ring, reverse=False)
+
+    mesh = trimesh.Trimesh(vertices=np.asarray(vertices), faces=np.asarray(faces), process=False)
+    z_vector = np.array([0.0, 0.0, 1.0])
+    axis = np.cross(z_vector, direction)
+    axis_length = float(np.linalg.norm(axis))
+    if axis_length < 1e-12:
+        if float(np.dot(z_vector, direction)) < 0:
+            mesh.apply_transform(trimesh.transformations.rotation_matrix(math.pi, [0, 1, 0], point=[0, 0, 0]))
+    else:
+        axis = axis / axis_length
+        angle = math.acos(float(np.clip(np.dot(z_vector, direction), -1.0, 1.0)))
+        mesh.apply_transform(trimesh.transformations.rotation_matrix(angle, axis, point=[0, 0, 0]))
+    mesh.apply_translation(np.asarray(start_point, dtype=float))
+    mesh.merge_vertices()
+    return mesh
 
 
 def _combine_meshes(meshes: List[trimesh.Trimesh], boolean_union: bool) -> Optional[trimesh.Trimesh]:
@@ -576,6 +747,7 @@ def _write_preview_html(
     meshes_by_material: Mapping[str, trimesh.Trimesh],
     material_defs: Mapping[str, Any],
     output_path: Path,
+    node_material: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
     if not meshes_by_material:
         return None
@@ -585,11 +757,15 @@ def _write_preview_html(
         return None
 
     traces = []
-    for idx, material in enumerate(sorted(meshes_by_material)):
+    materials = sorted(meshes_by_material)
+    if node_material in materials:
+        materials = [material for material in materials if material != node_material] + [str(node_material)]
+    for idx, material in enumerate(materials):
         mesh = meshes_by_material[material]
         if mesh.is_empty or len(mesh.faces) == 0:
             continue
         color = _material_color(material, material_defs, idx)
+        opacity = 0.68 if node_material in meshes_by_material and material != node_material else 1.0
         vertices = np.asarray(mesh.vertices)
         faces = np.asarray(mesh.faces)
         traces.append(
@@ -602,7 +778,7 @@ def _write_preview_html(
                 k=faces[:, 2],
                 name=str(material),
                 color=color,
-                opacity=1.0,
+                opacity=opacity,
                 flatshading=True,
                 showlegend=True,
             )

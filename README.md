@@ -176,6 +176,8 @@ same-shape material matrix:
     "cube_side_length_mm": 30,
     "variable_thickness": true,
     "node_material": "junctions",
+    "node_material_priority": true,
+    "node_radius_scale": 1.0,
     "junction_policy": "separate",
     "mixed_junction_material": "junctions",
     "boolean_union": true
@@ -224,6 +226,15 @@ Mixed-material junctions are controlled by `geometry.junction_policy`:
 
 - If `geometry.node_material` is set, every node junction sphere is
   written to that material, regardless of the incident edge materials.
+  By default those node spheres also reserve their physical volume:
+  beam-material STLs are cut away at the node spheres so a slicer cannot
+  overwrite the node material with beam material. Set
+  `"node_material_priority": false` only if you intentionally want the
+  older overlapping-material output.
+- `geometry.node_radius_scale` controls the radius of generated junction
+  spheres relative to the thickest incident beam radius. The default is
+  `1.0`; values like `1.25` or `1.35` make the node material visibly
+  protrude around beam junctions.
 - `separate`: same-material nodes stay with that material; mixed nodes
   are written to `mixed_junction_material`.
 - `dominant`: mixed nodes go to the material with the largest total
@@ -300,6 +311,52 @@ split is recorded directly in:
 ```text
 sample_configs/voronoi_random_material_demo/voronoi_material_demo_edges.csv
 ```
+
+## Periodic HuPPI Network STL Demo
+
+The HuPPI periodic demo uses the neighboring `HuPPI-Network-Analysis`
+repository to generate one perturbed-lattice point pattern with disorder
+strength `a = 0.5`, then builds four periodic networks clipped at the box
+boundaries:
+
+- Gabriel
+- Delaunay
+- Delaunay-centroidal
+- Voronoi
+
+Generate the full demo with:
+
+```bash
+python examples/huppi_periodic_network_stl_demo.py
+```
+
+The generated input/config files are contained in:
+
+```text
+sample_configs/huppi_periodic_a05_demo/
+```
+
+The STL and HTML preview outputs are written to:
+
+```text
+samples_output/huppi_periodic_a05_demo/
+```
+
+Each network folder contains three variants:
+
+- `uniform_thickness.json`: two-column edge list, one default beam
+  thickness, one material
+- `variable_thickness.json`: random edge thickness weights from `0.5`
+  to `2.0`
+- `two_materials.json`: random beam materials `beam_material_a` and
+  `beam_material_b`, plus separate `node_material` junction STLs whose
+  volume is subtracted from the beam STLs. These configs set
+  `node_radius_scale` to `1.35` so the node material is visible in the
+  HTML previews.
+
+The committed demo inputs use a `12 x 12` underlying point pattern
+(`144` points) and seed `20260528`. The generated graph sizes are listed
+in `sample_configs/huppi_periodic_a05_demo/manifest.json`.
 
 ## Static Config Builder
 

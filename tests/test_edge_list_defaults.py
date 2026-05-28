@@ -2,6 +2,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import trimesh
+
 from config_to_stl import generate_from_config_data
 from config_to_stl import _load_edges
 
@@ -101,6 +103,53 @@ class EdgeListDefaultsTest(unittest.TestCase):
 
         materials = {output["material"] for output in result["jobs"][0]["outputs"]}
         self.assertEqual(materials, {"edge_default", "node_default"})
+
+    def test_node_material_priority_subtracts_node_volume_from_beams(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "xy.csv").write_text("0,0\n1,0\n", encoding="utf-8")
+            (root / "edges.csv").write_text("source,target,material\n0,1,beam\n", encoding="utf-8")
+            base_config = {
+                "default_material": "beam",
+                "geometry": {
+                    "beam_diameter_mm": 0.25,
+                    "cube_side_length_mm": 1,
+                    "variable_thickness": False,
+                    "node_material": "node",
+                    "boolean_union": False,
+                    "sections": 16,
+                    "sphere_subdivisions": 1,
+                },
+                "jobs": [{
+                    "positions": "xy.csv",
+                    "adjacency": "edges.csv",
+                    "adjacency_format": "edge_list",
+                }],
+            }
+
+            legacy_config = dict(base_config)
+            legacy_config["output_dir"] = "legacy"
+            legacy_config["geometry"] = dict(base_config["geometry"], node_material_priority=False)
+            legacy_config["jobs"] = [dict(base_config["jobs"][0], name="legacy")]
+            priority_config = dict(base_config)
+            priority_config["output_dir"] = "priority"
+            priority_config["geometry"] = dict(base_config["geometry"], node_material_priority=True)
+            priority_config["jobs"] = [dict(base_config["jobs"][0], name="priority")]
+
+            legacy = generate_from_config_data(legacy_config, base_dir=root)["jobs"][0]
+            priority = generate_from_config_data(priority_config, base_dir=root)["jobs"][0]
+
+            legacy_outputs = {output["material"]: output for output in legacy["outputs"]}
+            priority_outputs = {output["material"]: output for output in priority["outputs"]}
+            legacy_beam = trimesh.load_mesh(legacy_outputs["beam"]["path"])
+            priority_beam = trimesh.load_mesh(priority_outputs["beam"]["path"])
+            priority_node = trimesh.load_mesh(priority_outputs["node"]["path"])
+
+            self.assertLess(priority_beam.volume, legacy_beam.volume * 0.9)
+            self.assertTrue(priority_beam.is_watertight)
+            self.assertTrue(priority_beam.is_volume)
+            self.assertTrue(priority_node.is_watertight)
+            self.assertTrue(priority_node.is_volume)
 
 
 if __name__ == "__main__":

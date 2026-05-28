@@ -1,0 +1,25 @@
+{
+  "output_dir": "../../../samples_output/huppi_periodic_a05_demo/gabriel/variable_thickness",
+  "default_material": "beam_default",
+  "geometry": {
+    "beam_diameter_mm": 0.25,
+    "cube_side_length_mm": 30.0,
+    "variable_thickness": true,
+    "junction_policy": "separate",
+    "mixed_junction_material": "node_material",
+    "boolean_union": false
+  },
+  "materials": {
+    "beam_default": {
+      "color": "#2563eb"
+    }
+  },
+  "jobs": [
+    {
+      "name": "gabriel_variable_thickness",
+      "positions": "nodes.csv",
+      "adjacency": "edges_variable_thickness.csv",
+      "adjacency_format": "edge_list"
+    }
+  ]
+}

@@ -1,0 +1,381 @@
+{
+  "source": "HuPPI-Network-Analysis",
+  "huppi_repo": "/home/james/HuPPI-Network-Analysis",
+  "output_dir": "sample_configs/huppi_periodic_a05_demo",
+  "stl_output_dir": "samples_output/huppi_periodic_a05_demo",
+  "lattice_size": 12,
+  "point_count": 144,
+  "alpha": 0.5,
+  "seed": 20260528,
+  "box_size": [
+    12.0,
+    12.0
+  ],
+  "graph_types": {
+    "gabriel": {
+      "node_count": 210,
+      "edge_count": 405,
+      "configs": [
+        "sample_configs/huppi_periodic_a05_demo/gabriel/uniform_thickness.json",
+        "sample_configs/huppi_periodic_a05_demo/gabriel/variable_thickness.json",
+        "sample_configs/huppi_periodic_a05_demo/gabriel/two_materials.json"
+      ],
+      "stl_results": [
+        {
+          "jobs": [
+            {
+              "name": "gabriel_uniform_thickness",
+              "edge_count": 405,
+              "material_count": 1,
+              "outputs": [
+                {
+                  "material": "beam_default",
+                  "path": "samples_output/huppi_periodic_a05_demo/gabriel/uniform_thickness/gabriel_uniform_thickness_beam_default.stl",
+                  "faces": 119040,
+                  "watertight": true,
+                  "is_volume": true
+                }
+              ],
+              "preview": "samples_output/huppi_periodic_a05_demo/gabriel/uniform_thickness/gabriel_uniform_thickness_preview.html"
+            }
+          ]
+        },
+        {
+          "jobs": [
+            {
+              "name": "gabriel_variable_thickness",
+              "edge_count": 405,
+              "material_count": 1,
+              "outputs": [
+                {
+                  "material": "beam_default",
+                  "path": "samples_output/huppi_periodic_a05_demo/gabriel/variable_thickness/gabriel_variable_thickness_beam_default.stl",
+                  "faces": 119040,
+                  "watertight": true,
+                  "is_volume": true
+                }
+              ],
+              "preview": "samples_output/huppi_periodic_a05_demo/gabriel/variable_thickness/gabriel_variable_thickness_preview.html"
+            }
+          ]
+        },
+        {
+          "jobs": [
+            {
+              "name": "gabriel_two_materials",
+              "edge_count": 405,
+              "material_count": 3,
+              "outputs": [
+                {
+                  "material": "beam_material_a",
+                  "path": "samples_output/huppi_periodic_a05_demo/gabriel/two_materials/gabriel_two_materials_beam_material_a.stl",
+                  "faces": 205824,
+                  "watertight": true,
+                  "is_volume": true
+                },
+                {
+                  "material": "beam_material_b",
+                  "path": "samples_output/huppi_periodic_a05_demo/gabriel/two_materials/gabriel_two_materials_beam_material_b.stl",
+                  "faces": 208896,
+                  "watertight": true,
+                  "is_volume": true
+                },
+                {
+                  "material": "node_material",
+                  "path": "samples_output/huppi_periodic_a05_demo/gabriel/two_materials/gabriel_two_materials_node_material.stl",
+                  "faces": 67200,
+                  "watertight": true,
+                  "is_volume": true
+                }
+              ],
+              "preview": "samples_output/huppi_periodic_a05_demo/gabriel/two_materials/gabriel_two_materials_preview.html"
+            }
+          ]
+        }
+      ],
+      "thickness_range": [
+        0.5,
+        2.0
+      ],
+      "materials": [
+        "beam_material_a",
+        "beam_material_b",
+        "node_material"
+      ]
+    },
+    "delaunay": {
+      "node_count": 238,
+      "edge_count": 479,
+      "configs": [
+        "sample_configs/huppi_periodic_a05_demo/delaunay/uniform_thickness.json",
+        "sample_configs/huppi_periodic_a05_demo/delaunay/variable_thickness.json",
+        "sample_configs/huppi_periodic_a05_demo/delaunay/two_materials.json"
+      ],
+      "stl_results": [
+        {
+          "jobs": [
+            {
+              "name": "delaunay_uniform_thickness",
+              "edge_count": 479,
+              "material_count": 1,
+              "outputs": [
+                {
+                  "material": "beam_default",
+                  "path": "samples_output/huppi_periodic_a05_demo/delaunay/uniform_thickness/delaunay_uniform_thickness_beam_default.stl",
+                  "faces": 137472,
+                  "watertight": true,
+                  "is_volume": true
+                }
+              ],
+              "preview": "samples_output/huppi_periodic_a05_demo/delaunay/uniform_thickness/delaunay_uniform_thickness_preview.html"
+            }
+          ]
+        },
+        {
+          "jobs": [
+            {
+              "name": "delaunay_variable_thickness",
+              "edge_count": 479,
+              "material_count": 1,
+              "outputs": [
+                {
+                  "material": "beam_default",
+                  "path": "samples_output/huppi_periodic_a05_demo/delaunay/variable_thickness/delaunay_variable_thickness_beam_default.stl",
+                  "faces": 137472,
+                  "watertight": true,
+                  "is_volume": true
+                }
+              ],
+              "preview": "samples_output/huppi_periodic_a05_demo/delaunay/variable_thickness/delaunay_variable_thickness_preview.html"
+            }
+          ]
+        },
+        {
+          "jobs": [
+            {
+              "name": "delaunay_two_materials",
+              "edge_count": 479,
+              "material_count": 3,
+              "outputs": [
+                {
+                  "material": "beam_material_a",
+                  "path": "samples_output/huppi_periodic_a05_demo/delaunay/two_materials/delaunay_two_materials_beam_material_a.stl",
+                  "faces": 234496,
+                  "watertight": true,
+                  "is_volume": true
+                },
+                {
+                  "material": "beam_material_b",
+                  "path": "samples_output/huppi_periodic_a05_demo/delaunay/two_materials/delaunay_two_materials_beam_material_b.stl",
+                  "faces": 256000,
+                  "watertight": true,
+                  "is_volume": true
+                },
+                {
+                  "material": "node_material",
+                  "path": "samples_output/huppi_periodic_a05_demo/delaunay/two_materials/delaunay_two_materials_node_material.stl",
+                  "faces": 76160,
+                  "watertight": true,
+                  "is_volume": true
+                }
+              ],
+              "preview": "samples_output/huppi_periodic_a05_demo/delaunay/two_materials/delaunay_two_materials_preview.html"
+            }
+          ]
+        }
+      ],
+      "thickness_range": [
+        0.5,
+        2.0
+      ],
+      "materials": [
+        "beam_material_a",
+        "beam_material_b",
+        "node_material"
+      ]
+    },
+    "delaunay_centroidal": {
+      "node_count": 358,
+      "edge_count": 467,
+      "configs": [
+        "sample_configs/huppi_periodic_a05_demo/delaunay_centroidal/uniform_thickness.json",
+        "sample_configs/huppi_periodic_a05_demo/delaunay_centroidal/variable_thickness.json",
+        "sample_configs/huppi_periodic_a05_demo/delaunay_centroidal/two_materials.json"
+      ],
+      "stl_results": [
+        {
+          "jobs": [
+            {
+              "name": "delaunay_centroidal_uniform_thickness",
+              "edge_count": 467,
+              "material_count": 1,
+              "outputs": [
+                {
+                  "material": "beam_default",
+                  "path": "samples_output/huppi_periodic_a05_demo/delaunay_centroidal/uniform_thickness/delaunay_centroidal_uniform_thickness_beam_default.stl",
+                  "faces": 174336,
+                  "watertight": true,
+                  "is_volume": true
+                }
+              ],
+              "preview": "samples_output/huppi_periodic_a05_demo/delaunay_centroidal/uniform_thickness/delaunay_centroidal_uniform_thickness_preview.html"
+            }
+          ]
+        },
+        {
+          "jobs": [
+            {
+              "name": "delaunay_centroidal_variable_thickness",
+              "edge_count": 467,
+              "material_count": 1,
+              "outputs": [
+                {
+                  "material": "beam_default",
+                  "path": "samples_output/huppi_periodic_a05_demo/delaunay_centroidal/variable_thickness/delaunay_centroidal_variable_thickness_beam_default.stl",
+                  "faces": 174336,
+                  "watertight": true,
+                  "is_volume": true
+                }
+              ],
+              "preview": "samples_output/huppi_periodic_a05_demo/delaunay_centroidal/variable_thickness/delaunay_centroidal_variable_thickness_preview.html"
+            }
+          ]
+        },
+        {
+          "jobs": [
+            {
+              "name": "delaunay_centroidal_two_materials",
+              "edge_count": 467,
+              "material_count": 3,
+              "outputs": [
+                {
+                  "material": "beam_material_a",
+                  "path": "samples_output/huppi_periodic_a05_demo/delaunay_centroidal/two_materials/delaunay_centroidal_two_materials_beam_material_a.stl",
+                  "faces": 242688,
+                  "watertight": true,
+                  "is_volume": true
+                },
+                {
+                  "material": "beam_material_b",
+                  "path": "samples_output/huppi_periodic_a05_demo/delaunay_centroidal/two_materials/delaunay_centroidal_two_materials_beam_material_b.stl",
+                  "faces": 230400,
+                  "watertight": true,
+                  "is_volume": true
+                },
+                {
+                  "material": "node_material",
+                  "path": "samples_output/huppi_periodic_a05_demo/delaunay_centroidal/two_materials/delaunay_centroidal_two_materials_node_material.stl",
+                  "faces": 114560,
+                  "watertight": true,
+                  "is_volume": true
+                }
+              ],
+              "preview": "samples_output/huppi_periodic_a05_demo/delaunay_centroidal/two_materials/delaunay_centroidal_two_materials_preview.html"
+            }
+          ]
+        }
+      ],
+      "thickness_range": [
+        0.5,
+        2.0
+      ],
+      "materials": [
+        "beam_material_a",
+        "beam_material_b",
+        "node_material"
+      ]
+    },
+    "voronoi": {
+      "node_count": 356,
+      "edge_count": 466,
+      "configs": [
+        "sample_configs/huppi_periodic_a05_demo/voronoi/uniform_thickness.json",
+        "sample_configs/huppi_periodic_a05_demo/voronoi/variable_thickness.json",
+        "sample_configs/huppi_periodic_a05_demo/voronoi/two_materials.json"
+      ],
+      "stl_results": [
+        {
+          "jobs": [
+            {
+              "name": "voronoi_uniform_thickness",
+              "edge_count": 466,
+              "material_count": 1,
+              "outputs": [
+                {
+                  "material": "beam_default",
+                  "path": "samples_output/huppi_periodic_a05_demo/voronoi/uniform_thickness/voronoi_uniform_thickness_beam_default.stl",
+                  "faces": 173568,
+                  "watertight": true,
+                  "is_volume": true
+                }
+              ],
+              "preview": "samples_output/huppi_periodic_a05_demo/voronoi/uniform_thickness/voronoi_uniform_thickness_preview.html"
+            }
+          ]
+        },
+        {
+          "jobs": [
+            {
+              "name": "voronoi_variable_thickness",
+              "edge_count": 466,
+              "material_count": 1,
+              "outputs": [
+                {
+                  "material": "beam_default",
+                  "path": "samples_output/huppi_periodic_a05_demo/voronoi/variable_thickness/voronoi_variable_thickness_beam_default.stl",
+                  "faces": 173568,
+                  "watertight": true,
+                  "is_volume": true
+                }
+              ],
+              "preview": "samples_output/huppi_periodic_a05_demo/voronoi/variable_thickness/voronoi_variable_thickness_preview.html"
+            }
+          ]
+        },
+        {
+          "jobs": [
+            {
+              "name": "voronoi_two_materials",
+              "edge_count": 466,
+              "material_count": 3,
+              "outputs": [
+                {
+                  "material": "beam_material_a",
+                  "path": "samples_output/huppi_periodic_a05_demo/voronoi/two_materials/voronoi_two_materials_beam_material_a.stl",
+                  "faces": 211968,
+                  "watertight": true,
+                  "is_volume": true
+                },
+                {
+                  "material": "beam_material_b",
+                  "path": "samples_output/huppi_periodic_a05_demo/voronoi/two_materials/voronoi_two_materials_beam_material_b.stl",
+                  "faces": 215040,
+                  "watertight": true,
+                  "is_volume": true
+                },
+                {
+                  "material": "node_material",
+                  "path": "samples_output/huppi_periodic_a05_demo/voronoi/two_materials/voronoi_two_materials_node_material.stl",
+                  "faces": 113920,
+                  "watertight": true,
+                  "is_volume": true
+                }
+              ],
+              "preview": "samples_output/huppi_periodic_a05_demo/voronoi/two_materials/voronoi_two_materials_preview.html"
+            }
+          ]
+        }
+      ],
+      "thickness_range": [
+        0.5,
+        2.0
+      ],
+      "materials": [
+        "beam_material_a",
+        "beam_material_b",
+        "node_material"
+      ]
+    }
+  },
+  "manifest_path": "sample_configs/huppi_periodic_a05_demo/manifest.json"
+}

@@ -1,0 +1,25 @@
+{
+  "output_dir": "../../../samples_output/huppi_periodic_a05_demo/delaunay/uniform_thickness",
+  "default_material": "beam_default",
+  "geometry": {
+    "beam_diameter_mm": 0.25,
+    "cube_side_length_mm": 30.0,
+    "variable_thickness": false,
+    "junction_policy": "separate",
+    "mixed_junction_material": "node_material",
+    "boolean_union": false
+  },
+  "materials": {
+    "beam_default": {
+      "color": "#2563eb"
+    }
+  },
+  "jobs": [
+    {
+      "name": "delaunay_uniform_thickness",
+      "positions": "nodes.csv",
+      "adjacency": "edges_uniform.csv",
+      "adjacency_format": "edge_list"
+    }
+  ]
+}
