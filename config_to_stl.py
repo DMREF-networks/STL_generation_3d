@@ -117,14 +117,14 @@ def _generate_job(
     sphere_subdivisions = int(geometry.get("sphere_subdivisions", 2))
     boolean_union = bool(geometry.get("boolean_union", True))
     junction_policy = str(geometry.get("junction_policy", "separate")).strip().lower()
-    mixed_junction_material = str(geometry.get("mixed_junction_material", "junctions"))
+    default_material = str(job.get("default_material", root_config.get("default_material", "default")))
+    mixed_junction_material = str(geometry.get("mixed_junction_material", default_material))
     node_radius_scale = float(geometry.get("node_radius_scale", geometry.get("junction_radius_scale", 1.0)))
     node_material = geometry.get("node_material")
     node_material = str(node_material).strip() if node_material is not None else None
     if not node_material:
         node_material = None
     node_material_priority = bool(geometry.get("node_material_priority", node_material is not None))
-    default_material = str(job.get("default_material", root_config.get("default_material", "default")))
 
     if beam_diameter <= 0:
         raise ValueError("geometry.beam_diameter_mm must be greater than zero.")
@@ -136,8 +136,8 @@ def _generate_job(
         raise ValueError("geometry.sphere_subdivisions must be non-negative.")
     if node_radius_scale <= 0:
         raise ValueError("geometry.node_radius_scale must be greater than zero.")
-    if junction_policy not in {"separate", "dominant", "per_material"}:
-        raise ValueError("geometry.junction_policy must be one of: separate, dominant, per_material.")
+    if junction_policy not in {"separate", "dominant"}:
+        raise ValueError("geometry.junction_policy must be one of: separate, dominant.")
 
     positions = _load_positions(_resolve_path(base_dir, positions_path))
     positions = _normalize_positions(positions, cube_side)
@@ -199,7 +199,8 @@ def _generate_job(
             )
         if not meshes:
             continue
-        combined = _combine_meshes(meshes, boolean_union=boolean_union)
+        material_boolean_union = boolean_union and material != node_material
+        combined = _combine_meshes(meshes, boolean_union=material_boolean_union)
         if combined is None or combined.is_empty:
             continue
         filename = f"{_slug(name)}_{_slug(material)}.stl"
@@ -564,10 +565,8 @@ def _add_junction_spheres(
             target_materials = unique_materials
         elif junction_policy == "separate":
             target_materials = [mixed_junction_material]
-        elif junction_policy == "dominant":
-            target_materials = [_dominant_material(material_weights)]
         else:
-            target_materials = unique_materials
+            target_materials = [_dominant_material(material_weights)]
 
         for material in target_materials:
             sphere = icosphere(radius=radius, subdivisions=sphere_subdivisions)
@@ -708,10 +707,16 @@ def _create_node_cut_beam(
 def _combine_meshes(meshes: List[trimesh.Trimesh], boolean_union: bool) -> Optional[trimesh.Trimesh]:
     if not meshes:
         return None
-    if len(meshes) == 1:
+    if boolean_union:
+        prepared = [_repair_mesh(mesh.copy()) for mesh in meshes if mesh is not None and not mesh.is_empty]
+        if not prepared:
+            return None
+        if len(prepared) == 1:
+            mesh = prepared[0]
+        else:
+            mesh = trimesh.boolean.union(prepared)
+    elif len(meshes) == 1:
         mesh = meshes[0].copy()
-    elif boolean_union:
-        mesh = trimesh.boolean.union(meshes)
     else:
         mesh = trimesh.util.concatenate(meshes)
     return _repair_mesh(mesh)

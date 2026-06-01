@@ -1,8 +1,14 @@
 myenv/
+.venv/
 .DS_store
 .vscode
 __pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
 csvFiles/
+local_configs/
+local_output/
 output.txt
 sample_configs/random_edge_material_demo/
 *.html

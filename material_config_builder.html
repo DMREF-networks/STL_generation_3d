@@ -89,6 +89,12 @@
       font-size: 12px;
       font-weight: 650;
     }
+    .label-title {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+    }
     input, select, textarea {
       width: 100%;
       min-width: 0;
@@ -118,6 +124,51 @@
       color: var(--text);
       font-size: 14px;
       font-weight: 500;
+    }
+    .tooltip {
+      position: relative;
+      display: inline-grid;
+      place-items: center;
+      flex: 0 0 auto;
+      width: 18px;
+      height: 18px;
+      border: 1px solid var(--border);
+      border-radius: 50%;
+      background: var(--panel-2);
+      color: var(--muted);
+      cursor: help;
+      font-size: 12px;
+      font-weight: 800;
+      line-height: 1;
+    }
+    .tooltip::after {
+      content: attr(data-tooltip);
+      position: absolute;
+      left: 50%;
+      bottom: calc(100% + 8px);
+      z-index: 10;
+      width: 310px;
+      max-width: calc(100vw - 32px);
+      padding: 9px 10px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: #111827;
+      color: #fff;
+      box-shadow: var(--shadow);
+      font-size: 12px;
+      font-weight: 600;
+      line-height: 1.35;
+      opacity: 0;
+      pointer-events: none;
+      text-align: left;
+      transform: translate(-50%, 4px);
+      transition: opacity 120ms ease, transform 120ms ease;
+      white-space: normal;
+    }
+    .tooltip:hover::after,
+    .tooltip:focus::after {
+      opacity: 1;
+      transform: translate(-50%, 0);
     }
     .stack {
       display: grid;
@@ -204,6 +255,7 @@
     }
     .status.error { color: var(--danger); }
     .full { grid-column: 1 / -1; }
+    .hidden { display: none; }
     @media (max-width: 980px) {
       main { grid-template-columns: 1fr; }
       .grid { grid-template-columns: 1fr; }
@@ -241,9 +293,9 @@
           </label>
           <label>Adjacency format
             <select id="adjacencyFormat">
+              <option value="auto">auto</option>
               <option value="matrix">matrix</option>
               <option value="edge_list">edge_list</option>
-              <option value="auto">auto</option>
             </select>
           </label>
           <label>Material matrix
@@ -261,26 +313,61 @@
           <label>Side length mm
             <input id="sideLength" type="number" step="0.001" min="0" value="30">
           </label>
-          <label>Junction policy
+          <label>
+            <span class="label-title">
+              Node material mode
+              <span
+                class="tooltip"
+                tabindex="0"
+                aria-label="Node material mode help"
+                data-tooltip="Choose whether every node sphere uses one dedicated material, or node spheres are assigned from the beam materials that touch them. A dedicated node material is usually clearest for multi-material prints."
+              >?</span>
+            </span>
+            <select id="nodeMaterialMode">
+              <option value="fixed">Use one material for all nodes</option>
+              <option value="auto">Use connected beam materials for nodes</option>
+            </select>
+          </label>
+          <label id="nodeMaterialRow">All-node material
+            <input id="nodeMaterial" value="rigid">
+          </label>
+          <label id="junctionPolicyRow">
+            <span class="label-title">
+              Mixed-node handling
+              <span
+                class="tooltip"
+                tabindex="0"
+                aria-label="Mixed-node handling help"
+                data-tooltip="Only used when node material mode is set to connected beam materials. Separate writes mixed-material nodes into the mixed-node material. Dominant writes each mixed node into the incident beam material with the largest total weight."
+              >?</span>
+            </span>
             <select id="junctionPolicy">
               <option value="separate">separate</option>
               <option value="dominant">dominant</option>
-              <option value="per_material">per_material</option>
             </select>
           </label>
-          <label>All-node material
-            <input id="nodeMaterial" value="junctions">
-          </label>
-          <label>Mixed junction material
-            <input id="mixedJunctionMaterial" value="junctions">
+          <label id="mixedJunctionMaterialRow">Mixed-node material
+            <input id="mixedJunctionMaterial" value="rigid">
           </label>
           <label class="check">
             <input id="variableThickness" type="checkbox" checked>
             Variable thickness
+            <span
+              class="tooltip"
+              tabindex="0"
+              aria-label="Variable thickness help"
+              data-tooltip="When on, adjacency matrix values or edge-list thickness/weight columns scale beam diameter. When off, nonzero values only mean an edge exists and all beams use the base diameter."
+            >?</span>
           </label>
           <label class="check">
             <input id="booleanUnion" type="checkbox" checked>
             Boolean union
+            <span
+              class="tooltip"
+              tabindex="0"
+              aria-label="Boolean union help"
+              data-tooltip="Merges overlapping pieces within each material into cleaner STL geometry. It never combines different materials. Leave on for final prints; turn off only if generation is slow or the union fails."
+            >?</span>
           </label>
         </div>
 
@@ -327,8 +414,7 @@
       materials: [
         ["rigid", "#2563eb"],
         ["flexible", "#dc2626"],
-        ["conductive", "#059669"],
-        ["junctions", "#4b5563"]
+        ["conductive", "#059669"]
       ]
     };
 
@@ -339,9 +425,7 @@
         beam_diameter_mm: 0.25,
         cube_side_length_mm: 30,
         variable_thickness: true,
-        node_material: "junctions",
-        junction_policy: "separate",
-        mixed_junction_material: "junctions",
+        node_material: "rigid",
         boolean_union: true
       },
       materials: Object.fromEntries(defaults.materials.map(([name, color]) => [name, { color }])),
@@ -349,7 +433,7 @@
         name: "test_multimaterial",
         positions: "sample_configs/demo_xy.csv",
         adjacency: "sample_configs/demo_adj.csv",
-        adjacency_format: "matrix",
+        adjacency_format: "auto",
         material_matrix: "sample_configs/demo_material_matrix.csv"
       }]
     };
@@ -357,7 +441,7 @@
     const ids = [
       "jobName", "outputDir", "positions", "adjacency", "adjacencyFormat",
       "materialMatrix", "edgeMaterials", "defaultMaterial", "beamDiameter",
-      "sideLength", "junctionPolicy", "nodeMaterial", "mixedJunctionMaterial",
+      "sideLength", "nodeMaterialMode", "junctionPolicy", "nodeMaterial", "mixedJunctionMaterial",
       "variableThickness", "booleanUnion", "configFileName"
     ];
 
@@ -366,6 +450,9 @@
     const jsonPreview = document.getElementById("jsonPreview");
     const command = document.getElementById("command");
     const status = document.getElementById("status");
+    const nodeMaterialRow = document.getElementById("nodeMaterialRow");
+    const junctionPolicyRow = document.getElementById("junctionPolicyRow");
+    const mixedJunctionMaterialRow = document.getElementById("mixedJunctionMaterialRow");
 
     function setStatus(text, error = false) {
       status.textContent = text;
@@ -411,24 +498,36 @@
       if (el.materialMatrix.value.trim()) job.material_matrix = el.materialMatrix.value.trim();
       if (el.edgeMaterials.value.trim()) job.edge_materials = el.edgeMaterials.value.trim();
 
+      const fixedNodeMaterial = el.nodeMaterialMode.value === "fixed";
+      const geometry = {
+        beam_diameter_mm: Number(el.beamDiameter.value),
+        cube_side_length_mm: Number(el.sideLength.value),
+        variable_thickness: el.variableThickness.checked,
+        boolean_union: el.booleanUnion.checked
+      };
+      if (fixedNodeMaterial) {
+        geometry.node_material = el.nodeMaterial.value.trim() || el.defaultMaterial.value.trim() || "default";
+      } else {
+        geometry.junction_policy = el.junctionPolicy.value;
+        if (el.junctionPolicy.value === "separate") {
+          geometry.mixed_junction_material = el.mixedJunctionMaterial.value.trim() || el.defaultMaterial.value.trim() || "default";
+        }
+      }
+
       return {
         output_dir: el.outputDir.value.trim() || ".",
         default_material: el.defaultMaterial.value.trim() || "default",
-        geometry: {
-          beam_diameter_mm: Number(el.beamDiameter.value),
-          cube_side_length_mm: Number(el.sideLength.value),
-          variable_thickness: el.variableThickness.checked,
-          node_material: el.nodeMaterial.value.trim() || undefined,
-          junction_policy: el.junctionPolicy.value,
-          mixed_junction_material: el.mixedJunctionMaterial.value.trim() || "junctions",
-          boolean_union: el.booleanUnion.checked
-        },
+        geometry,
         materials: materialsObject(),
         jobs: [job]
       };
     }
 
     function render() {
+      const fixedNodeMaterial = el.nodeMaterialMode.value === "fixed";
+      nodeMaterialRow.classList.toggle("hidden", !fixedNodeMaterial);
+      junctionPolicyRow.classList.toggle("hidden", fixedNodeMaterial);
+      mixedJunctionMaterialRow.classList.toggle("hidden", fixedNodeMaterial || el.junctionPolicy.value !== "separate");
       const config = buildConfig();
       jsonPreview.value = JSON.stringify(config, null, 2);
       const filename = el.configFileName.value.trim() || "material_config.json";
@@ -460,9 +559,12 @@
       el.defaultMaterial.value = job.default_material || config.default_material || "default";
       el.beamDiameter.value = geometry.beam_diameter_mm || geometry.beam_diameter || 1;
       el.sideLength.value = geometry.cube_side_length_mm || geometry.cube_side_length || 1;
-      el.junctionPolicy.value = geometry.junction_policy || "separate";
-      el.nodeMaterial.value = geometry.node_material || "";
-      el.mixedJunctionMaterial.value = geometry.mixed_junction_material || "junctions";
+      el.nodeMaterialMode.value = geometry.node_material ? "fixed" : "auto";
+      el.junctionPolicy.value = ["separate", "dominant"].includes(geometry.junction_policy)
+        ? geometry.junction_policy
+        : "separate";
+      el.nodeMaterial.value = geometry.node_material || el.defaultMaterial.value || "default";
+      el.mixedJunctionMaterial.value = geometry.mixed_junction_material || el.defaultMaterial.value || "default";
       el.variableThickness.checked = Boolean(geometry.variable_thickness);
       el.booleanUnion.checked = geometry.boolean_union !== false;
 

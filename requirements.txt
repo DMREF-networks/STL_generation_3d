@@ -1,7 +1,9 @@
-numpy
-trimesh
-scipy
-matplotlib
-manifold3d
-plotly
-shapely
+# Version ranges are based on the environment used for the repository's
+# lightweight regression checks.
+numpy>=1.24,<2
+trimesh>=4.4,<5
+scipy>=1.10,<2
+matplotlib>=3.7,<4
+manifold3d>=3.4,<4
+plotly>=5.22,<6
+shapely>=2.0,<3

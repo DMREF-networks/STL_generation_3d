@@ -9,17 +9,16 @@ from __future__ import annotations
 import argparse
 import json
 import mimetypes
+import re
 import traceback
 import webbrowser
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any, Dict, Iterable, Tuple
+from typing import Any, Dict, Iterable, Optional, Tuple
 from urllib.parse import parse_qs, urlparse
 
 from config_to_stl import generate_from_config_data
-from examples.random_material_edge_list_demo import generate_demo as generate_edge_list_demo
-from examples.voronoi_random_material_demo import generate_demo as generate_voronoi_demo
 
 
 DEFAULT_CONFIG_PATH = Path("sample_configs/multimaterial_test.json")
@@ -138,6 +137,12 @@ PAGE = """<!doctype html>
       font-size: 12px;
       font-weight: 700;
     }
+    .label-title {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+    }
     input, select, textarea {
       width: 100%;
       min-width: 0;
@@ -210,6 +215,51 @@ PAGE = """<!doctype html>
       color: var(--text);
       font-size: 14px;
       font-weight: 550;
+    }
+    .tooltip {
+      position: relative;
+      display: inline-grid;
+      place-items: center;
+      flex: 0 0 auto;
+      width: 18px;
+      height: 18px;
+      border: 1px solid var(--border);
+      border-radius: 50%;
+      background: var(--panel-2);
+      color: var(--muted);
+      cursor: help;
+      font-size: 12px;
+      font-weight: 800;
+      line-height: 1;
+    }
+    .tooltip::after {
+      content: attr(data-tooltip);
+      position: absolute;
+      left: 50%;
+      bottom: calc(100% + 8px);
+      z-index: 10;
+      width: 310px;
+      max-width: calc(100vw - 32px);
+      padding: 9px 10px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: #111827;
+      color: #fff;
+      box-shadow: var(--shadow);
+      font-size: 12px;
+      font-weight: 600;
+      line-height: 1.35;
+      opacity: 0;
+      pointer-events: none;
+      text-align: left;
+      transform: translate(-50%, 4px);
+      transition: opacity 120ms ease, transform 120ms ease;
+      white-space: normal;
+    }
+    .tooltip:hover::after,
+    .tooltip:focus::after {
+      opacity: 1;
+      transform: translate(-50%, 0);
     }
     .hint {
       color: var(--muted);
@@ -327,12 +377,6 @@ PAGE = """<!doctype html>
   <header>
     <h1>Material STL Generator</h1>
     <div class="row">
-      <select id="demoPreset" aria-label="Demo preset">
-        <option value="sample">Sample matrix config</option>
-        <option value="edge">Random material edge list</option>
-        <option value="voronoi">Voronoi random materials</option>
-      </select>
-      <button id="loadDemo">Load Demo</button>
       <button id="generate" class="primary">Generate STLs</button>
     </div>
   </header>
@@ -342,18 +386,11 @@ PAGE = """<!doctype html>
       <div class="section-head">
         <h2>Configuration</h2>
         <div class="row">
-          <button id="openConfig">Open JSON</button>
-          <button id="saveConfig">Save</button>
-          <button id="saveConfigAs">Save As</button>
+          <button id="openConfig">Load Config</button>
         </div>
       </div>
       <div class="content stack">
-        <div class="field-row">
-          <label>Config path
-            <input id="configPath" value="sample_configs/multimaterial_test.json">
-          </label>
-          <button class="browse" data-target="configPath" data-kind="config">Browse</button>
-        </div>
+        <input id="configPath" type="hidden" value="sample_configs/multimaterial_test.json">
 
         <div class="grid">
           <label>Job name
@@ -410,18 +447,41 @@ PAGE = """<!doctype html>
           <label>Default edge material
             <select id="defaultMaterial"></select>
           </label>
-          <label>Node material
+          <label>
+            <span class="label-title">
+              Node material mode
+              <span
+                class="tooltip"
+                tabindex="0"
+                aria-label="Node material mode help"
+                data-tooltip="Choose whether every node sphere uses one dedicated material, or node spheres are assigned from the beam materials that touch them. A dedicated node material is usually clearest for multi-material prints."
+              >?</span>
+            </span>
+            <select id="nodeMaterialMode">
+              <option value="fixed">Use one material for all nodes</option>
+              <option value="auto">Use connected beam materials for nodes</option>
+            </select>
+          </label>
+          <label id="nodeMaterialRow">Node material
             <select id="nodeMaterial"></select>
           </label>
-          <label>Mixed-junction material
-            <select id="mixedJunctionMaterial"></select>
-          </label>
-          <label>Junction policy
+          <label id="junctionPolicyRow">
+            <span class="label-title">
+              Mixed-node handling
+              <span
+                class="tooltip"
+                tabindex="0"
+                aria-label="Mixed-node handling help"
+                data-tooltip="Only used when node material mode is set to connected beam materials. Separate writes mixed-material nodes into the mixed-node material. Dominant writes each mixed node into the incident beam material with the largest total weight."
+              >?</span>
+            </span>
             <select id="junctionPolicy">
               <option value="separate">Separate mixed nodes</option>
               <option value="dominant">Dominant incident material</option>
-              <option value="per_material">Duplicate per material</option>
             </select>
+          </label>
+          <label id="mixedJunctionMaterialRow">Mixed-node material
+            <select id="mixedJunctionMaterial"></select>
           </label>
           <label>Beam diameter mm
             <input id="beamDiameter" type="number" step="0.001" min="0" value="0.25">
@@ -432,10 +492,22 @@ PAGE = """<!doctype html>
           <label class="check">
             <input id="variableThickness" type="checkbox" checked>
             Use adjacency or thickness values
+            <span
+              class="tooltip"
+              tabindex="0"
+              aria-label="Adjacency or thickness values help"
+              data-tooltip="When on, adjacency matrix values or edge-list thickness/weight columns scale beam diameter. When off, nonzero values only mean an edge exists and all beams use the base diameter."
+            >?</span>
           </label>
           <label class="check">
             <input id="booleanUnion" type="checkbox" checked>
             Boolean union per material
+            <span
+              class="tooltip"
+              tabindex="0"
+              aria-label="Boolean union per material help"
+              data-tooltip="Merges overlapping pieces within each material into cleaner STL geometry. It never combines different materials. Leave on for final prints; turn off only if generation is slow or the union fails."
+            >?</span>
           </label>
         </div>
 
@@ -469,7 +541,7 @@ PAGE = """<!doctype html>
     </section>
 
     <section>
-      <div id="status" class="status">Loading sample config...</div>
+      <div id="status" class="status">Ready</div>
       <div id="result" class="result"></div>
     </section>
   </main>
@@ -478,9 +550,9 @@ PAGE = """<!doctype html>
     const ids = [
       "configPath", "jobName", "outputDir", "positions", "adjacency",
       "adjacencyFormat", "materialMode", "materialMatrix", "edgeMaterials",
-      "defaultMaterial", "nodeMaterial", "mixedJunctionMaterial",
+      "defaultMaterial", "nodeMaterialMode", "nodeMaterial", "mixedJunctionMaterial",
       "junctionPolicy", "beamDiameter", "sideLength", "variableThickness",
-      "booleanUnion", "configJson", "demoPreset"
+      "booleanUnion", "configJson"
     ];
     const el = Object.fromEntries(ids.map(id => [id, document.getElementById(id)]));
     const materialsBody = document.getElementById("materialsBody");
@@ -488,13 +560,15 @@ PAGE = """<!doctype html>
     const resultEl = document.getElementById("result");
     const materialMatrixRow = document.getElementById("materialMatrixRow");
     const edgeMaterialsRow = document.getElementById("edgeMaterialsRow");
+    const nodeMaterialRow = document.getElementById("nodeMaterialRow");
+    const junctionPolicyRow = document.getElementById("junctionPolicyRow");
+    const mixedJunctionMaterialRow = document.getElementById("mixedJunctionMaterialRow");
     const buttons = [...document.querySelectorAll("button")];
 
     const defaultMaterials = [
       ["rigid", "#2563eb"],
       ["flexible", "#dc2626"],
-      ["conductive", "#059669"],
-      ["junctions", "#4b5563"]
+      ["conductive", "#059669"]
     ];
 
     let jsonDirty = false;
@@ -597,21 +671,34 @@ PAGE = """<!doctype html>
     function updateMaterialSelects() {
       const names = materialEntries().map(([name]) => name);
       const defaultName = names.includes(el.defaultMaterial.value) ? el.defaultMaterial.value : names[0] || "default";
+      const nodeName = names.includes(el.nodeMaterial.value)
+        ? el.nodeMaterial.value
+        : defaultName;
+      const mixedName = names.includes(el.mixedJunctionMaterial.value)
+        ? el.mixedJunctionMaterial.value
+        : defaultName;
       setSelectOptions(el.defaultMaterial, names, { preferred: defaultName });
-      setSelectOptions(el.nodeMaterial, names, { blankLabel: "Auto from connected edges" });
-      setSelectOptions(el.mixedJunctionMaterial, names, { preferred: names.includes("junctions") ? "junctions" : defaultName });
+      setSelectOptions(el.nodeMaterial, names, { preferred: nodeName });
+      setSelectOptions(el.mixedJunctionMaterial, names, { preferred: mixedName });
     }
 
     function buildConfig() {
+      const fixedNodeMaterial = el.nodeMaterialMode.value === "fixed";
+      const fallbackMaterial = el.defaultMaterial.value || materialEntries()[0]?.[0] || "default";
       const geometry = {
         beam_diameter_mm: Number(el.beamDiameter.value),
         cube_side_length_mm: Number(el.sideLength.value),
         variable_thickness: el.variableThickness.checked,
-        junction_policy: el.junctionPolicy.value,
-        mixed_junction_material: el.mixedJunctionMaterial.value || "junctions",
         boolean_union: el.booleanUnion.checked
       };
-      if (el.nodeMaterial.value) geometry.node_material = el.nodeMaterial.value;
+      if (fixedNodeMaterial) {
+        geometry.node_material = el.nodeMaterial.value || fallbackMaterial;
+      } else {
+        geometry.junction_policy = el.junctionPolicy.value;
+        if (el.junctionPolicy.value === "separate") {
+          geometry.mixed_junction_material = el.mixedJunctionMaterial.value || fallbackMaterial;
+        }
+      }
 
       const job = {
         name: el.jobName.value.trim() || "network",
@@ -654,6 +741,10 @@ PAGE = """<!doctype html>
       updateMaterialSelects();
       materialMatrixRow.classList.toggle("hidden", el.materialMode.value !== "matrix");
       edgeMaterialsRow.classList.toggle("hidden", el.materialMode.value !== "edge_table");
+      const fixedNodeMaterial = el.nodeMaterialMode.value === "fixed";
+      nodeMaterialRow.classList.toggle("hidden", !fixedNodeMaterial);
+      junctionPolicyRow.classList.toggle("hidden", fixedNodeMaterial);
+      mixedJunctionMaterialRow.classList.toggle("hidden", fixedNodeMaterial || el.junctionPolicy.value !== "separate");
       const config = buildConfig();
       if (!jsonDirty || options.forceJson) {
         el.configJson.value = JSON.stringify(config, null, 2);
@@ -666,6 +757,12 @@ PAGE = """<!doctype html>
       const job = (Array.isArray(config.jobs) && config.jobs[0]) || config;
       const geometry = { ...(config.geometry || {}), ...(job.geometry || {}) };
       const materials = { ...(config.materials || {}), ...(job.materials || {}) };
+      const configuredDefaultMaterial = job.default_material || config.default_material;
+      [configuredDefaultMaterial, geometry.node_material, geometry.mixed_junction_material]
+        .filter(Boolean)
+        .forEach(name => {
+          if (!materials[name]) materials[name] = { color: "#4b5563" };
+        });
 
       el.configPath.value = path || el.configPath.value;
       el.jobName.value = job.name || "network";
@@ -682,7 +779,10 @@ PAGE = """<!doctype html>
           : (el.adjacencyFormat.value === "edge_list" ? "edge_column" : "default");
       el.beamDiameter.value = geometry.beam_diameter_mm || geometry.beam_diameter || 1;
       el.sideLength.value = geometry.cube_side_length_mm || geometry.cube_side_length || 1;
-      el.junctionPolicy.value = geometry.junction_policy || "separate";
+      el.nodeMaterialMode.value = geometry.node_material ? "fixed" : "auto";
+      el.junctionPolicy.value = ["separate", "dominant"].includes(geometry.junction_policy)
+        ? geometry.junction_policy
+        : "separate";
       el.variableThickness.checked = Boolean(geometry.variable_thickness);
       el.booleanUnion.checked = geometry.boolean_union !== false;
 
@@ -693,8 +793,8 @@ PAGE = """<!doctype html>
       entries.forEach(([name, color]) => addMaterialRow(name, color));
       updateMaterialSelects();
       el.defaultMaterial.value = job.default_material || config.default_material || materialEntries()[0]?.[0] || "default";
-      el.nodeMaterial.value = geometry.node_material || "";
-      el.mixedJunctionMaterial.value = geometry.mixed_junction_material || "junctions";
+      el.nodeMaterial.value = geometry.node_material || el.defaultMaterial.value;
+      el.mixedJunctionMaterial.value = geometry.mixed_junction_material || el.defaultMaterial.value;
       jsonDirty = false;
       render({ forceJson: true });
     }
@@ -705,12 +805,15 @@ PAGE = """<!doctype html>
       setStatus("Config loaded");
     }
 
-    function renderResult(result) {
+    function renderResult(result, generatedConfigPath = "") {
       if (!result || !result.jobs) {
         resultEl.innerHTML = "";
         return;
       }
-      resultEl.innerHTML = result.jobs.map(job => {
+      const savedConfig = generatedConfigPath
+        ? `<p>${fileLink(generatedConfigPath, "Saved generation config")}</p>`
+        : "";
+      resultEl.innerHTML = savedConfig + result.jobs.map(job => {
         const rows = (job.outputs || []).map(output => `
           <tr>
             <td>${escapeHtml(output.material)}</td>
@@ -763,34 +866,6 @@ PAGE = """<!doctype html>
       }
     });
 
-    document.getElementById("saveConfig").addEventListener("click", async () => {
-      setBusy(true);
-      try {
-        const payload = await post("/save", { path: el.configPath.value, text: el.configJson.value });
-        el.configPath.value = payload.path;
-        setStatus("Config saved");
-      } catch (error) {
-        setStatus(error.message, true);
-      } finally {
-        setBusy(false);
-      }
-    });
-
-    document.getElementById("saveConfigAs").addEventListener("click", async () => {
-      setBusy(true);
-      try {
-        const picked = await post("/pick-save-file", { kind: "config", initial: el.configPath.value });
-        el.configPath.value = picked.path;
-        const payload = await post("/save", { path: el.configPath.value, text: el.configJson.value });
-        el.configPath.value = payload.path;
-        setStatus("Config saved");
-      } catch (error) {
-        setStatus(error.message, true);
-      } finally {
-        setBusy(false);
-      }
-    });
-
     document.getElementById("generate").addEventListener("click", async () => {
       setBusy(true);
       resultEl.innerHTML = "";
@@ -800,36 +875,11 @@ PAGE = """<!doctype html>
           config_path: el.configPath.value,
           config_text: el.configJson.value
         });
-        renderResult(payload.result);
+        renderResult(payload.result, payload.generated_config_path);
         setStatus("STL generation complete");
       } catch (error) {
         resultEl.innerHTML = `<pre>${escapeHtml(error.message)}</pre>`;
         setStatus("Generation failed", true);
-      } finally {
-        setBusy(false);
-      }
-    });
-
-    document.getElementById("loadDemo").addEventListener("click", async () => {
-      setBusy(true);
-      try {
-        const preset = el.demoPreset.value;
-        if (preset === "sample") {
-          await loadConfig("sample_configs/multimaterial_test.json");
-          setStatus("Sample matrix config loaded");
-        } else if (preset === "edge") {
-          setStatus("Creating random-material edge-list demo...");
-          const payload = await post("/demo", {});
-          await loadConfig(payload.config_path);
-          setStatus(`Demo config created from ${payload.source}`);
-        } else {
-          setStatus("Creating Voronoi random-material demo...");
-          const payload = await post("/voronoi-demo", {});
-          await loadConfig(payload.config_path);
-          setStatus(`Voronoi demo loaded: ${payload.node_count} nodes, ${payload.edge_count} edges`);
-        }
-      } catch (error) {
-        setStatus(error.message, true);
       } finally {
         setBusy(false);
       }
@@ -892,11 +942,8 @@ PAGE = """<!doctype html>
       setStatus("Advanced JSON edited. Generate will use the JSON text.", false);
     });
 
-    loadConfig("sample_configs/multimaterial_test.json").catch(error => {
-      setStatus(error.message, true);
-      defaultMaterials.forEach(([name, color]) => addMaterialRow(name, color));
-      render({ forceJson: true });
-    });
+    defaultMaterials.forEach(([name, color]) => addMaterialRow(name, color));
+    render({ forceJson: true });
   </script>
 </body>
 </html>
@@ -927,10 +974,6 @@ class Handler(BaseHTTPRequestHandler):
                 self._save(payload)
             elif parsed.path == "/generate":
                 self._generate(payload)
-            elif parsed.path == "/demo":
-                self._demo()
-            elif parsed.path == "/voronoi-demo":
-                self._voronoi_demo()
             elif parsed.path == "/pick-file":
                 self._pick_file(payload)
             elif parsed.path == "/pick-save-file":
@@ -969,15 +1012,11 @@ class Handler(BaseHTTPRequestHandler):
         config = json.loads(config_text)
         path = _resolve_path(payload.get("config_path") or DEFAULT_CONFIG_PATH)
         result = generate_from_config_data(config, base_dir=path.parent)
-        self._send_json({"result": result})
-
-    def _demo(self) -> None:
-        result = generate_edge_list_demo()
-        self._send_json(result)
-
-    def _voronoi_demo(self) -> None:
-        result = generate_voronoi_demo()
-        self._send_json(result)
+        generated_config_path = _write_generated_config(config, result)
+        self._send_json({
+            "result": result,
+            "generated_config_path": str(generated_config_path) if generated_config_path else "",
+        })
 
     def _pick_file(self, payload: Dict[str, Any]) -> None:
         path = _pick_path(
@@ -1027,6 +1066,24 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
         self.wfile.write(data)
+
+
+def _write_generated_config(config: Dict[str, Any], result: Dict[str, Any]) -> Optional[Path]:
+    jobs = result.get("jobs") or []
+    if not jobs:
+        return None
+    first_job = jobs[0]
+    output_dir = Path(str(first_job.get("output_dir") or ".")).expanduser().resolve()
+    output_dir.mkdir(parents=True, exist_ok=True)
+    name = _slug(first_job.get("name") or "material_config")
+    path = output_dir / f"{name}_config.json"
+    path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
+    return path
+
+
+def _slug(value: Any) -> str:
+    slug = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(value)).strip("._")
+    return slug or "material_config"
 
 
 def _resolve_path(value: Any) -> Path:

@@ -6,16 +6,42 @@ NumPy `.npy` files. Outputs are STL files and optional HTML previews.
 
 ## Setup
 
-Clone the repository and install the Python dependencies:
+Clone the repository, create a virtual environment, and install the
+Python dependencies:
 
 ```bash
 git clone https://github.com/DMREF-networks/STL_generation_3d.git
 cd STL_generation_3d
+python -m venv .venv
+source .venv/bin/activate
 python -m pip install -r requirements.txt
+python -m unittest discover
 ```
 
-The project uses `trimesh`, `manifold3d`, `shapely`, `numpy`, `scipy`,
-`matplotlib`, and `plotly`.
+On Windows, activate the environment with:
+
+```bat
+.\.venv\Scripts\activate
+```
+
+The project is currently checked with Python `3.8.10`. It uses
+`trimesh`, `manifold3d`, `shapely`, `numpy`, `scipy`, `matplotlib`, and
+`plotly`.
+
+## Personal Configs And Outputs
+
+The committed sample configs are meant as examples. For day-to-day use,
+keep your own configs and generated STL/HTML files in local working
+folders such as:
+
+```text
+local_configs/
+local_output/
+```
+
+Those folders are ignored by Git so collaborators can create their own
+inputs and outputs without mixing them into the shared repository
+history.
 
 ## Input Files
 
@@ -96,10 +122,12 @@ fields. Keep the Python process running while using the page. The
 browser provides the interface, and the local Python process does the
 meshing and file writes.
 
-The UI can load existing JSON configs, save edited configs, generate STL
-files, create the random-material edge-list demo, and load the Voronoi
-random-material demo. The advanced JSON panel is still available for
-manual edits, but it is not required for the normal workflow.
+The normal UI workflow is to set the form controls and click
+`Generate STLs`. Each generation also writes a matching JSON config file
+into the output folder so the parameters can be reused later. If you
+already have a JSON config, use `Load Config` to populate the form before
+generating. The advanced JSON panel is still available for manual edits,
+but it is not required for the normal workflow.
 
 If the file picker cannot open in your environment, paste the file path
 into the field instead.
@@ -156,7 +184,6 @@ That sample writes files like:
 test_multimaterial_rigid.stl
 test_multimaterial_flexible.stl
 test_multimaterial_conductive.stl
-test_multimaterial_junctions.stl
 test_multimaterial_preview.html
 ```
 
@@ -172,14 +199,12 @@ same-shape material matrix:
   "output_dir": "../samples_output/material_demo",
   "default_material": "rigid",
   "geometry": {
-    "beam_diameter_mm": 0.25,
-    "cube_side_length_mm": 30,
+    "beam_diameter_mm": 3.0,
+    "cube_side_length_mm": 80,
     "variable_thickness": true,
-    "node_material": "junctions",
+    "node_material": "rigid",
     "node_material_priority": true,
     "node_radius_scale": 1.0,
-    "junction_policy": "separate",
-    "mixed_junction_material": "junctions",
     "boolean_union": true
   },
   "jobs": [
@@ -187,7 +212,7 @@ same-shape material matrix:
       "name": "test_multimaterial",
       "positions": "demo_xy.csv",
       "adjacency": "demo_adj.csv",
-      "adjacency_format": "matrix",
+      "adjacency_format": "auto",
       "material_matrix": "demo_material_matrix.csv"
     }
   ]
@@ -222,7 +247,8 @@ are treated as thickness when variable thickness is enabled. Text third
 columns are treated as material. A header row is the clearest option for
 teaching examples.
 
-Mixed-material junctions are controlled by `geometry.junction_policy`:
+Node junctions are controlled by `geometry.node_material` and
+`geometry.junction_policy`:
 
 - If `geometry.node_material` is set, every node junction sphere is
   written to that material, regardless of the incident edge materials.
@@ -239,15 +265,16 @@ Mixed-material junctions are controlled by `geometry.junction_policy`:
   are written to `mixed_junction_material`.
 - `dominant`: mixed nodes go to the material with the largest total
   incident edge weight.
-- `per_material`: mixed nodes are duplicated into each incident material
-  STL. This can create overlapping geometry.
 
 If `geometry.node_material` is omitted, node junctions still have a
 defined default behavior: nodes touching only one material are written
 with that edge material, and mixed-material nodes follow
-`junction_policy`. For a single shared node material, set
-`geometry.node_material` in the config, for example `"junctions"` or the
-same name as `default_material`.
+`junction_policy`. `junction_policy` can be `"separate"` or
+`"dominant"`. For a single shared node material, set
+`geometry.node_material` to an existing material name, such as the same
+name as `default_material`. To use a separate node material, add that
+material to the config first and then set `geometry.node_material` to its
+name.
 
 ## Random Edge-List Material Demo
 
@@ -347,7 +374,8 @@ Each network folder contains three variants:
 - `uniform_thickness.json`: two-column edge list, one default beam
   thickness, one material
 - `variable_thickness.json`: random edge thickness weights from `0.5`
-  to `2.0`
+  to `2.0`; the base beam diameter is scaled so the mean beam diameter
+  is about `3 mm`
 - `two_materials.json`: random beam materials `beam_material_a` and
   `beam_material_b`, plus separate `node_material` junction STLs whose
   volume is subtracted from the beam STLs. These configs set
@@ -355,8 +383,9 @@ Each network folder contains three variants:
   HTML previews.
 
 The committed demo inputs use a `12 x 12` underlying point pattern
-(`144` points) and seed `20260528`. The generated graph sizes are listed
-in `sample_configs/huppi_periodic_a05_demo/manifest.json`.
+(`144` points), seed `20260528`, an `80 mm` max coordinate span, and an
+average beam diameter of about `3 mm`. The generated graph sizes are
+listed in `sample_configs/huppi_periodic_a05_demo/manifest.json`.
 
 ## Static Config Builder
 

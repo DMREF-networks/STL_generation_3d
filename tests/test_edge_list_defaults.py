@@ -104,6 +104,20 @@ class EdgeListDefaultsTest(unittest.TestCase):
         materials = {output["material"] for output in result["jobs"][0]["outputs"]}
         self.assertEqual(materials, {"edge_default", "node_default"})
 
+    def test_per_material_junction_policy_is_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config = {
+                "geometry": {"junction_policy": "per_material"},
+                "jobs": [{
+                    "positions": "xy.csv",
+                    "adjacency": "edges.csv",
+                }],
+            }
+
+            with self.assertRaisesRegex(ValueError, "junction_policy"):
+                generate_from_config_data(config, base_dir=root)
+
     def test_node_material_priority_subtracts_node_volume_from_beams(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
