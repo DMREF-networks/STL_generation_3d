@@ -1,8 +1,9 @@
 # STL Generation 3D
 
 STL Generation 3D converts network data into 3D-printable STL meshes.
-Inputs are node positions plus connectivity data, either as CSV files or
-NumPy `.npy` files. Outputs are STL files and optional HTML previews.
+Inputs are node positions plus connectivity data, either as CSV files,
+NumPy `.npy` files, or explicit-schema pickle `.pkl` files. Outputs are
+STL files and optional HTML previews.
 
 ## Setup
 
@@ -233,38 +234,26 @@ source,target,thickness,material
 
 Set `"adjacency_format": "edge_list"` for that layout.
 
-Numeric material IDs are also supported for edge-list inputs. A four-column
-NumPy edge list can use:
+Pickle edge lists can carry explicit column metadata, which avoids guessing
+whether a third column means thickness or material. Use a `.pkl` containing
+either a list of edge dictionaries:
 
-```text
-source, target, thickness, material_id
+```python
+[
+    {"source": 0, "target": 1, "thickness": 1.0, "material": "rigid"},
+    {"source": 1, "target": 2, "thickness": 0.6, "material": "flexible"},
+]
 ```
 
-By default, numeric IDs map to material names such as `0 -> material_0` and
-`1 -> material_1`. Override the names with `material_id_map`:
+or a dictionary with `columns` and `edges`:
 
-```json
+```python
 {
-  "material_id_map": {
-    "0": "rigid",
-    "1": "flexible"
-  }
-}
-```
-
-If you want to keep topology and beam types in separate files, use a shared
-edge list plus an aligned material-ID vector:
-
-```json
-{
-  "jobs": [
-    {
-      "positions": "network_xy.npy",
-      "adjacency": "network_adj.npy",
-      "adjacency_format": "edge_list",
-      "edge_material_ids": "beam_types.npy"
-    }
-  ]
+    "columns": ["source", "target", "thickness", "material"],
+    "edges": [
+        [0, 1, 1.0, "rigid"],
+        [1, 2, 0.6, "flexible"],
+    ],
 }
 ```
 
@@ -276,7 +265,6 @@ Edge-list column handling is intentionally permissive:
 | `source,target,thickness` | thickness column plus `default_material`; thickness is used only when `geometry.variable_thickness` is `true` |
 | `source,target,material` | default thickness plus per-edge material; use a header row so the third column is identified as material |
 | `source,target,thickness,material` | per-edge thickness and per-edge material |
-| `source,target,thickness,material_id` | per-edge thickness and numeric material IDs, commonly in `.npy` edge lists |
 
 Headerless three-column edge lists are ambiguous. Numeric third columns
 are treated as thickness when variable thickness is enabled. Text third

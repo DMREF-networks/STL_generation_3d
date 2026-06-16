@@ -1,8 +1,8 @@
+import pickle
 import tempfile
 import unittest
 from pathlib import Path
 
-import numpy as np
 import trimesh
 
 from config_to_stl import generate_from_config_data
@@ -75,17 +75,18 @@ class EdgeListDefaultsTest(unittest.TestCase):
         self.assertEqual([edge.weight for edge in edges], [1.0, 1.0])
         self.assertEqual([edge.material for edge in edges], ["flexible", "rigid"])
 
-    def test_numeric_npy_fourth_column_maps_to_material_ids(self):
+    def test_pickle_edge_list_with_columns_disambiguates_material_column(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            edges_path = root / "edges.npy"
-            np.save(
-                edges_path,
-                np.asarray([
-                    [0, 1, 0.5, 0],
-                    [1, 2, 2.0, 1],
-                ], dtype=float),
-            )
+            edges_path = root / "edges.pkl"
+            with edges_path.open("wb") as f:
+                pickle.dump({
+                    "columns": ["source", "target", "material"],
+                    "edges": [
+                        [0, 1, "flexible"],
+                        [1, 2, "rigid"],
+                    ],
+                }, f)
 
             edges = _load_edges(
                 edges_path,
@@ -96,43 +97,47 @@ class EdgeListDefaultsTest(unittest.TestCase):
                 base_dir=root,
             )
 
-        self.assertEqual([(edge.weight, edge.material) for edge in edges], [
-            (0.5, "material_0"),
-            (2.0, "material_1"),
-        ])
+        self.assertEqual([edge.weight for edge in edges], [1.0, 1.0])
+        self.assertEqual([edge.material for edge in edges], ["flexible", "rigid"])
 
-    def test_numeric_material_ids_can_use_configured_map(self):
+    def test_pickle_edge_list_with_columns_preserves_thickness_and_material(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            edges_path = root / "edges.npy"
-            np.save(edges_path, np.asarray([[0, 1, 1.0, 0], [1, 2, 1.0, 1]], dtype=float))
+            edges_path = root / "edges.pkl"
+            with edges_path.open("wb") as f:
+                pickle.dump({
+                    "columns": ["source", "target", "thickness", "material"],
+                    "edges": [
+                        [0, 1, 0.5, "flexible"],
+                        [1, 2, 2.0, "rigid"],
+                    ],
+                }, f)
 
             edges = _load_edges(
                 edges_path,
                 {"adjacency_format": "edge_list"},
-                variable_thickness=False,
+                variable_thickness=True,
                 default_material="default",
                 material_lookup={},
                 base_dir=root,
-                material_id_map={"0": "rigid", "1": "flexible"},
             )
 
-        self.assertEqual([edge.material for edge in edges], ["rigid", "flexible"])
+        self.assertEqual([edge.weight for edge in edges], [0.5, 2.0])
+        self.assertEqual([edge.material for edge in edges], ["flexible", "rigid"])
 
-    def test_edge_material_id_vector_maps_by_edge_order(self):
+    def test_pickle_edge_list_accepts_mapping_records(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            edges_path = root / "edges.npy"
-            ids_path = root / "beam_types.npy"
-            np.save(edges_path, np.asarray([[0, 1, 0.5], [1, 2, 2.0]], dtype=float))
-            np.save(ids_path, np.asarray([1, 0], dtype=int))
+            edges_path = root / "edges.pkl"
+            with edges_path.open("wb") as f:
+                pickle.dump([
+                    {"source": 0, "target": 1, "thickness": 0.5, "material": "flexible"},
+                    {"source": 1, "target": 2, "thickness": 2.0, "material": "rigid"},
+                ], f)
 
             edges = _load_edges(
                 edges_path,
-                {
-                    "adjacency_format": "edge_list",
-                    "edge_material_ids": "beam_types.npy",
-                },
+                {"adjacency_format": "edge_list"},
                 variable_thickness=True,
                 default_material="default",
                 material_lookup={},
@@ -140,8 +145,8 @@ class EdgeListDefaultsTest(unittest.TestCase):
             )
 
         self.assertEqual([(edge.weight, edge.material) for edge in edges], [
-            (0.5, "material_1"),
-            (2.0, "material_0"),
+            (0.5, "flexible"),
+            (2.0, "rigid"),
         ])
 
     def test_configured_node_material_is_used_when_nodes_have_no_material_table(self):

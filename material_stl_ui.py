@@ -425,8 +425,7 @@ PAGE = """<!doctype html>
             <select id="materialMode">
               <option value="default">Use default material</option>
               <option value="matrix">Material matrix file</option>
-              <option value="edge_column">Material/ID column in edge list</option>
-              <option value="edge_ids">Material ID vector file</option>
+              <option value="edge_column">Material column in edge list</option>
               <option value="edge_table">Separate edge-material table</option>
             </select>
           </label>
@@ -441,12 +440,6 @@ PAGE = """<!doctype html>
               <input id="edgeMaterials" placeholder="optional CSV path">
             </label>
             <button class="browse" data-target="edgeMaterials" data-kind="edge_materials">Choose</button>
-          </div>
-          <div id="edgeMaterialIdsRow" class="field-row hidden">
-            <label>Material ID vector
-              <input id="edgeMaterialIds" placeholder="optional CSV or NumPy path">
-            </label>
-            <button class="browse" data-target="edgeMaterialIds" data-kind="edge_material_ids">Choose</button>
           </div>
         </div>
 
@@ -556,7 +549,7 @@ PAGE = """<!doctype html>
   <script>
     const ids = [
       "configPath", "jobName", "outputDir", "positions", "adjacency",
-      "adjacencyFormat", "materialMode", "materialMatrix", "edgeMaterials", "edgeMaterialIds",
+      "adjacencyFormat", "materialMode", "materialMatrix", "edgeMaterials",
       "defaultMaterial", "nodeMaterialMode", "nodeMaterial", "mixedJunctionMaterial",
       "junctionPolicy", "beamDiameter", "sideLength", "variableThickness",
       "booleanUnion", "configJson"
@@ -567,7 +560,6 @@ PAGE = """<!doctype html>
     const resultEl = document.getElementById("result");
     const materialMatrixRow = document.getElementById("materialMatrixRow");
     const edgeMaterialsRow = document.getElementById("edgeMaterialsRow");
-    const edgeMaterialIdsRow = document.getElementById("edgeMaterialIdsRow");
     const nodeMaterialRow = document.getElementById("nodeMaterialRow");
     const junctionPolicyRow = document.getElementById("junctionPolicyRow");
     const mixedJunctionMaterialRow = document.getElementById("mixedJunctionMaterialRow");
@@ -720,9 +712,6 @@ PAGE = """<!doctype html>
       if (el.materialMode.value === "edge_table" && el.edgeMaterials.value.trim()) {
         job.edge_materials = el.edgeMaterials.value.trim();
       }
-      if (el.materialMode.value === "edge_ids" && el.edgeMaterialIds.value.trim()) {
-        job.edge_material_ids = el.edgeMaterialIds.value.trim();
-      }
 
       return {
         output_dir: el.outputDir.value.trim() || ".",
@@ -741,11 +730,8 @@ PAGE = """<!doctype html>
       if (!(config.geometry.beam_diameter_mm > 0)) errors.push("Beam diameter must be greater than zero.");
       if (!(config.geometry.cube_side_length_mm > 0)) errors.push("Side length must be greater than zero.");
       if (Object.keys(config.materials).length === 0) errors.push("At least one material is required.");
-      if (
-        config.jobs[0].adjacency_format === "matrix"
-        && ["edge_column", "edge_ids"].includes(el.materialMode.value)
-      ) {
-        errors.push("Edge material columns and ID vectors only apply to edge-list inputs.");
+      if (config.jobs[0].adjacency_format === "matrix" && el.materialMode.value === "edge_column") {
+        errors.push("A material column only applies to edge-list inputs.");
       }
       if (errors.length) setStatus(errors.join(" "), true);
       else if (!jsonDirty) setStatus("Ready");
@@ -755,7 +741,6 @@ PAGE = """<!doctype html>
       updateMaterialSelects();
       materialMatrixRow.classList.toggle("hidden", el.materialMode.value !== "matrix");
       edgeMaterialsRow.classList.toggle("hidden", el.materialMode.value !== "edge_table");
-      edgeMaterialIdsRow.classList.toggle("hidden", el.materialMode.value !== "edge_ids");
       const fixedNodeMaterial = el.nodeMaterialMode.value === "fixed";
       nodeMaterialRow.classList.toggle("hidden", !fixedNodeMaterial);
       junctionPolicyRow.classList.toggle("hidden", fixedNodeMaterial);
@@ -787,14 +772,11 @@ PAGE = """<!doctype html>
       el.adjacencyFormat.value = job.adjacency_format || "auto";
       el.materialMatrix.value = job.material_matrix || job.materials_matrix || "";
       el.edgeMaterials.value = job.edge_materials || "";
-      el.edgeMaterialIds.value = job.edge_material_ids || job.edge_material_id_file || job.material_ids || "";
       el.materialMode.value = job.material_matrix || job.materials_matrix
         ? "matrix"
-        : job.edge_material_ids || job.edge_material_id_file || job.material_ids
-          ? "edge_ids"
-          : job.edge_materials
-            ? "edge_table"
-            : (el.adjacencyFormat.value === "edge_list" ? "edge_column" : "default");
+        : job.edge_materials
+          ? "edge_table"
+          : (el.adjacencyFormat.value === "edge_list" ? "edge_column" : "default");
       el.beamDiameter.value = geometry.beam_diameter_mm || geometry.beam_diameter || 1;
       el.sideLength.value = geometry.cube_side_length_mm || geometry.cube_side_length || 1;
       el.nodeMaterialMode.value = geometry.node_material ? "fixed" : "auto";
@@ -1179,7 +1161,6 @@ def _dialog_title(kind: str) -> str:
         "adjacency": "Choose adjacency or edge-list file",
         "material_matrix": "Choose material matrix file",
         "edge_materials": "Choose edge-material table",
-        "edge_material_ids": "Choose material ID vector",
     }
     return titles.get(kind, "Choose file")
 
@@ -1189,8 +1170,8 @@ def _dialog_filetypes(kind: str) -> Iterable[Tuple[str, str]]:
         return [("JSON files", "*.json"), ("All files", "*")]
     if kind == "edge_materials":
         return [("CSV files", "*.csv"), ("All files", "*")]
-    if kind in {"positions", "adjacency", "material_matrix", "edge_material_ids"}:
-        return [("CSV and NumPy files", "*.csv *.npy"), ("CSV files", "*.csv"), ("NumPy files", "*.npy"), ("All files", "*")]
+    if kind in {"positions", "adjacency", "material_matrix"}:
+        return [("CSV, NumPy, and pickle files", "*.csv *.npy *.pkl *.pickle"), ("CSV files", "*.csv"), ("NumPy files", "*.npy"), ("Pickle files", "*.pkl *.pickle"), ("All files", "*")]
     return [("All files", "*")]
 
 

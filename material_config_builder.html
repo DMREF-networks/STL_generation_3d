@@ -304,9 +304,6 @@
           <label>Edge-material table
             <input id="edgeMaterials" placeholder="optional CSV path">
           </label>
-          <label>Material ID vector
-            <input id="edgeMaterialIds" placeholder="optional CSV or NumPy path">
-          </label>
           <label>Default material
             <input id="defaultMaterial" value="rigid">
           </label>
@@ -443,7 +440,7 @@
 
     const ids = [
       "jobName", "outputDir", "positions", "adjacency", "adjacencyFormat",
-      "materialMatrix", "edgeMaterials", "edgeMaterialIds", "defaultMaterial", "beamDiameter",
+      "materialMatrix", "edgeMaterials", "defaultMaterial", "beamDiameter",
       "sideLength", "nodeMaterialMode", "junctionPolicy", "nodeMaterial", "mixedJunctionMaterial",
       "variableThickness", "booleanUnion", "configFileName"
     ];
@@ -500,7 +497,6 @@
       };
       if (el.materialMatrix.value.trim()) job.material_matrix = el.materialMatrix.value.trim();
       if (el.edgeMaterials.value.trim()) job.edge_materials = el.edgeMaterials.value.trim();
-      if (el.edgeMaterialIds.value.trim()) job.edge_material_ids = el.edgeMaterialIds.value.trim();
 
       const fixedNodeMaterial = el.nodeMaterialMode.value === "fixed";
       const geometry = {
@@ -560,7 +556,6 @@
       el.adjacencyFormat.value = job.adjacency_format || "auto";
       el.materialMatrix.value = job.material_matrix || job.materials_matrix || "";
       el.edgeMaterials.value = job.edge_materials || "";
-      el.edgeMaterialIds.value = job.edge_material_ids || job.edge_material_id_file || job.material_ids || "";
       el.defaultMaterial.value = job.default_material || config.default_material || "default";
       el.beamDiameter.value = geometry.beam_diameter_mm || geometry.beam_diameter || 1;
       el.sideLength.value = geometry.cube_side_length_mm || geometry.cube_side_length || 1;
