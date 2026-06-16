@@ -143,6 +143,7 @@ def _generate_job(
     positions = _normalize_positions(positions, cube_side)
 
     material_lookup = _load_material_lookup(job, base_dir)
+    material_id_map = _merged_object(root_config.get("material_id_map"), job.get("material_id_map"))
     edges = _load_edges(
         _resolve_path(base_dir, adjacency_path),
         job,
@@ -150,6 +151,7 @@ def _generate_job(
         default_material=default_material,
         material_lookup=material_lookup,
         base_dir=base_dir,
+        material_id_map=material_id_map,
     )
     _validate_edges(edges, len(positions))
 
@@ -246,24 +248,65 @@ def _load_edges(
     default_material: str,
     material_lookup: Mapping[Tuple[int, int], str],
     base_dir: Path,
+    material_id_map: Optional[Mapping[str, str]] = None,
 ) -> List[Edge]:
+    material_id_map = _normalize_material_id_map(material_id_map)
     adjacency_format = str(job.get("adjacency_format", "auto")).strip().lower().replace("-", "_")
     if adjacency_format in {"edge_list", "edgelist", "edges", "edge_list_with_material"}:
-        return _load_edge_list(adjacency_path, job, variable_thickness, default_material, material_lookup)
+        return _load_edge_list(
+            adjacency_path,
+            job,
+            variable_thickness,
+            default_material,
+            material_lookup,
+            base_dir,
+            material_id_map,
+        )
     if adjacency_format == "matrix":
         matrix = _load_numeric_array(adjacency_path)
-        return _edges_from_matrix(matrix, job, base_dir, variable_thickness, default_material, material_lookup)
+        return _edges_from_matrix(
+            matrix,
+            job,
+            base_dir,
+            variable_thickness,
+            default_material,
+            material_lookup,
+            material_id_map,
+        )
     if adjacency_format != "auto":
         raise ValueError("adjacency_format must be one of: auto, matrix, edge_list.")
 
     try:
         matrix = _load_numeric_array(adjacency_path)
     except ValueError:
-        return _load_edge_list(adjacency_path, job, variable_thickness, default_material, material_lookup)
+        return _load_edge_list(
+            adjacency_path,
+            job,
+            variable_thickness,
+            default_material,
+            material_lookup,
+            base_dir,
+            material_id_map,
+        )
 
     if matrix.ndim == 2 and matrix.shape[0] == matrix.shape[1]:
-        return _edges_from_matrix(matrix, job, base_dir, variable_thickness, default_material, material_lookup)
-    return _edges_from_numeric_edge_list(matrix, variable_thickness, default_material, material_lookup)
+        return _edges_from_matrix(
+            matrix,
+            job,
+            base_dir,
+            variable_thickness,
+            default_material,
+            material_lookup,
+            material_id_map,
+        )
+    return _edges_from_numeric_edge_list(
+        matrix,
+        variable_thickness,
+        default_material,
+        material_lookup,
+        material_id_map,
+        _load_edge_material_ids(job, base_dir),
+    )
 
 
 def _edges_from_matrix(
@@ -273,6 +316,7 @@ def _edges_from_matrix(
     variable_thickness: bool,
     default_material: str,
     material_lookup: Mapping[Tuple[int, int], str],
+    material_id_map: Mapping[str, str],
 ) -> List[Edge]:
     matrix = np.asarray(matrix, dtype=float)
     if matrix.ndim != 2 or matrix.shape[0] != matrix.shape[1]:
@@ -297,7 +341,7 @@ def _edges_from_matrix(
             weight = value if variable_thickness else 1.0
             material = default_material
             if material_matrix is not None:
-                material = _material_from_matrix(material_matrix, i, j, default_material)
+                material = _material_from_matrix(material_matrix, i, j, default_material, material_id_map)
             material = material_lookup.get(_edge_key(i, j), material)
             edges.append(Edge(i, j, weight, material))
     return edges
@@ -309,12 +353,29 @@ def _load_edge_list(
     variable_thickness: bool,
     default_material: str,
     material_lookup: Mapping[Tuple[int, int], str],
+    base_dir: Path,
+    material_id_map: Mapping[str, str],
 ) -> List[Edge]:
+    material_ids = _load_edge_material_ids(job, base_dir)
     if path.suffix.lower() == ".npy":
         data = np.load(path, allow_pickle=True)
         if data.dtype.kind in {"U", "S", "O"}:
-            return _edges_from_string_edge_rows(data.tolist(), variable_thickness, default_material, material_lookup)
-        return _edges_from_numeric_edge_list(data, variable_thickness, default_material, material_lookup)
+            return _edges_from_string_edge_rows(
+                data.tolist(),
+                variable_thickness,
+                default_material,
+                material_lookup,
+                material_id_map,
+                material_ids,
+            )
+        return _edges_from_numeric_edge_list(
+            data,
+            variable_thickness,
+            default_material,
+            material_lookup,
+            material_id_map,
+            material_ids,
+        )
 
     rows = _read_csv_rows(path)
     header = _header_map(rows[0]) if rows and _looks_like_header(rows[0]) else None
@@ -342,7 +403,16 @@ def _load_edge_list(
             has_header=header is not None,
             source=f"{path} line {line_number}",
         )
-        material = _edge_material_from_row(row, material_col, default_material, has_header=header is not None)
+        if material_ids is not None and len(material_ids) != len(data_rows):
+            raise ValueError(f"edge_material_ids length {len(material_ids)} must match edge count {len(data_rows)}.")
+        material = _edge_material_from_row(
+            row,
+            material_col,
+            default_material,
+            has_header=header is not None,
+            material_id_map=material_id_map,
+            material_id=material_ids[line_number - (2 if header else 1)] if material_ids is not None else None,
+        )
         material = material_lookup.get(_edge_key(source, target), material)
         if weight > 0:
             edges.append(Edge(source, target, weight, material))
@@ -354,19 +424,29 @@ def _edges_from_numeric_edge_list(
     variable_thickness: bool,
     default_material: str,
     material_lookup: Mapping[Tuple[int, int], str],
+    material_id_map: Mapping[str, str],
+    material_ids: Optional[List[Any]] = None,
 ) -> List[Edge]:
     data = np.asarray(data)
     if data.ndim == 1:
         data = data.reshape(1, -1)
     if data.ndim != 2 or data.shape[1] < 2:
         raise ValueError("Edge-list adjacency input must have at least two columns.")
+    if material_ids is not None and len(material_ids) != len(data):
+        raise ValueError(f"edge_material_ids length {len(material_ids)} must match edge count {len(data)}.")
 
     edges = []
-    for row in data:
+    for row_index, row in enumerate(data):
         source = int(row[0])
         target = int(row[1])
         weight = float(row[2]) if variable_thickness and len(row) >= 3 else 1.0
-        material = material_lookup.get(_edge_key(source, target), default_material)
+        if material_ids is not None:
+            material = _material_from_column_value(material_ids[row_index], default_material, material_id_map)
+        elif len(row) >= 4:
+            material = _material_from_column_value(row[3], default_material, material_id_map)
+        else:
+            material = default_material
+        material = material_lookup.get(_edge_key(source, target), material)
         if weight > 0:
             edges.append(Edge(source, target, weight, material))
     return edges
@@ -377,6 +457,8 @@ def _edges_from_string_edge_rows(
     variable_thickness: bool,
     default_material: str,
     material_lookup: Mapping[Tuple[int, int], str],
+    material_id_map: Mapping[str, str],
+    material_ids: Optional[List[Any]] = None,
 ) -> List[Edge]:
     rows = [[str(cell).strip() for cell in row] for row in rows if len(row) >= 2]
     if not rows:
@@ -387,8 +469,11 @@ def _edges_from_string_edge_rows(
     target_col = _column_index(None, header, 1)
     thickness_col = _column_index(None, header, 2)
     material_col = _column_index(None, header, 3)
+    if material_ids is not None and len(material_ids) != len(data_rows):
+        raise ValueError(f"edge_material_ids length {len(material_ids)} must match edge count {len(data_rows)}.")
     edges = []
-    for line_number, row in enumerate(data_rows, start=2 if header else 1):
+    for row_index, row in enumerate(data_rows):
+        line_number = row_index + (2 if header else 1)
         source = int(float(row[source_col]))
         target = int(float(row[target_col]))
         weight = _edge_weight_from_row(
@@ -398,7 +483,14 @@ def _edges_from_string_edge_rows(
             has_header=header is not None,
             source=f"edge row {line_number}",
         )
-        material = _edge_material_from_row(row, material_col, default_material, has_header=header is not None)
+        material = _edge_material_from_row(
+            row,
+            material_col,
+            default_material,
+            has_header=header is not None,
+            material_id_map=material_id_map,
+            material_id=material_ids[row_index] if material_ids is not None else None,
+        )
         material = material_lookup.get(_edge_key(source, target), material)
         if weight > 0:
             edges.append(Edge(source, target, weight, material))
@@ -843,7 +935,22 @@ def _read_csv_rows(path: Path) -> List[List[str]]:
 
 def _looks_like_header(row: List[str]) -> bool:
     normalized = {cell.strip().lower() for cell in row}
-    return bool(normalized & {"source", "from", "target", "to", "material", "thickness", "weight"})
+    return bool(
+        normalized
+        & {
+            "source",
+            "from",
+            "target",
+            "to",
+            "material",
+            "material_id",
+            "material_name",
+            "material_type",
+            "beam_type",
+            "thickness",
+            "weight",
+        }
+    )
 
 
 def _header_map(row: List[str]) -> Dict[str, int]:
@@ -859,6 +966,8 @@ def _header_map(row: List[str]) -> Dict[str, int]:
         "diameter": "thickness",
         "material_id": "material",
         "material_name": "material",
+        "material_type": "material",
+        "beam_type": "material",
     }
     mapping: Dict[str, int] = {}
     for idx, name in enumerate(row):
@@ -924,9 +1033,14 @@ def _edge_material_from_row(
     material_col: Optional[int],
     default_material: str,
     has_header: bool,
+    material_id_map: Optional[Mapping[str, str]] = None,
+    material_id: Any = None,
 ) -> str:
+    material_id_map = material_id_map or {}
+    if material_id is not None:
+        return _material_from_column_value(material_id, default_material, material_id_map)
     if material_col is not None and material_col < len(row):
-        return _clean_material(row[material_col], default_material)
+        return _material_from_column_value(row[material_col], default_material, material_id_map)
     if not has_header and len(row) == 3 and _float_or_none(row[2]) is None:
         return _clean_material(row[2], default_material)
     return default_material
@@ -937,6 +1051,57 @@ def _float_or_none(value: Any) -> Optional[float]:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def _load_edge_material_ids(job: Mapping[str, Any], base_dir: Path) -> Optional[List[Any]]:
+    value = job.get("edge_material_ids") or job.get("edge_material_id_file") or job.get("material_ids")
+    if not value:
+        return None
+
+    path = _resolve_path(base_dir, value)
+    if not path.exists():
+        raise ValueError(f"File not found: {path}")
+    if path.suffix.lower() == ".npy":
+        data = np.load(path, allow_pickle=True)
+        return _material_id_vector_from_array(data, path)
+
+    rows = _read_csv_rows(path)
+    if not rows:
+        return []
+    header = _header_map(rows[0]) if _looks_like_header(rows[0]) else None
+    data_rows = rows[1:] if header else rows
+    if header:
+        material_col = _column_index("material", header, 0)
+    else:
+        material_col = 0
+    values = []
+    for line_number, row in enumerate(data_rows, start=2 if header else 1):
+        if material_col is None or material_col >= len(row):
+            raise ValueError(f"Invalid edge material id in {path} line {line_number}: {row}")
+        values.append(row[material_col])
+    return values
+
+
+def _material_id_vector_from_array(data: np.ndarray, path: Path) -> List[Any]:
+    data = np.asarray(data, dtype=object)
+    if data.ndim == 0:
+        return [data.item()]
+    if data.ndim == 1:
+        return data.tolist()
+    if data.ndim == 2 and data.shape[1] == 1:
+        return data[:, 0].tolist()
+    raise ValueError(f"edge_material_ids must be a 1D vector or one-column array: {path}")
+
+
+def _normalize_material_id_map(value: Optional[Mapping[str, Any]]) -> Dict[str, str]:
+    if not value:
+        return {}
+    if not isinstance(value, Mapping):
+        raise ValueError("material_id_map must be an object.")
+    result: Dict[str, str] = {}
+    for key, material in value.items():
+        result[_material_id_key(key)] = str(material)
+    return result
 
 
 def _merged_object(parent: Any, child: Any) -> Dict[str, Any]:
@@ -979,10 +1144,16 @@ def _parse_edge_key(value: str) -> Tuple[int, int]:
     return int(parts[0]), int(parts[1])
 
 
-def _material_from_matrix(matrix: np.ndarray, source: int, target: int, default_material: str) -> str:
-    material = _clean_material(matrix[source, target], "")
+def _material_from_matrix(
+    matrix: np.ndarray,
+    source: int,
+    target: int,
+    default_material: str,
+    material_id_map: Mapping[str, str],
+) -> str:
+    material = _material_from_matrix_value(matrix[source, target], "", material_id_map)
     if not material:
-        material = _clean_material(matrix[target, source], "")
+        material = _material_from_matrix_value(matrix[target, source], "", material_id_map)
     return material or default_material
 
 
@@ -990,6 +1161,50 @@ def _clean_material(value: Any, default_material: str) -> str:
     text = "" if value is None else str(value).strip()
     if text == "" or text.lower() in {"0", "none", "nan", "null"}:
         return default_material
+    return text
+
+
+def _material_from_matrix_value(
+    value: Any,
+    default_material: str,
+    material_id_map: Mapping[str, str],
+) -> str:
+    text = "" if value is None else str(value).strip()
+    if text == "" or text.lower() in {"none", "nan", "null"}:
+        return default_material
+
+    key = _material_id_key(text)
+    if key in material_id_map:
+        return material_id_map[key]
+
+    return _clean_material(text, default_material)
+
+
+def _material_from_column_value(
+    value: Any,
+    default_material: str,
+    material_id_map: Mapping[str, str],
+) -> str:
+    text = "" if value is None else str(value).strip()
+    if text == "" or text.lower() in {"none", "nan", "null"}:
+        return default_material
+
+    key = _material_id_key(text)
+    if key in material_id_map:
+        return material_id_map[key]
+
+    number = _float_or_none(text)
+    if number is not None and math.isfinite(number):
+        return f"material_{key}"
+
+    return _clean_material(text, default_material)
+
+
+def _material_id_key(value: Any) -> str:
+    text = "" if value is None else str(value).strip()
+    number = _float_or_none(text)
+    if number is not None and math.isfinite(number) and number.is_integer():
+        return str(int(number))
     return text
 
 

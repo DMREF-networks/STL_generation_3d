@@ -2,6 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import numpy as np
 import trimesh
 
 from config_to_stl import generate_from_config_data
@@ -73,6 +74,75 @@ class EdgeListDefaultsTest(unittest.TestCase):
 
         self.assertEqual([edge.weight for edge in edges], [1.0, 1.0])
         self.assertEqual([edge.material for edge in edges], ["flexible", "rigid"])
+
+    def test_numeric_npy_fourth_column_maps_to_material_ids(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            edges_path = root / "edges.npy"
+            np.save(
+                edges_path,
+                np.asarray([
+                    [0, 1, 0.5, 0],
+                    [1, 2, 2.0, 1],
+                ], dtype=float),
+            )
+
+            edges = _load_edges(
+                edges_path,
+                {"adjacency_format": "edge_list"},
+                variable_thickness=True,
+                default_material="rigid",
+                material_lookup={},
+                base_dir=root,
+            )
+
+        self.assertEqual([(edge.weight, edge.material) for edge in edges], [
+            (0.5, "material_0"),
+            (2.0, "material_1"),
+        ])
+
+    def test_numeric_material_ids_can_use_configured_map(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            edges_path = root / "edges.npy"
+            np.save(edges_path, np.asarray([[0, 1, 1.0, 0], [1, 2, 1.0, 1]], dtype=float))
+
+            edges = _load_edges(
+                edges_path,
+                {"adjacency_format": "edge_list"},
+                variable_thickness=False,
+                default_material="default",
+                material_lookup={},
+                base_dir=root,
+                material_id_map={"0": "rigid", "1": "flexible"},
+            )
+
+        self.assertEqual([edge.material for edge in edges], ["rigid", "flexible"])
+
+    def test_edge_material_id_vector_maps_by_edge_order(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            edges_path = root / "edges.npy"
+            ids_path = root / "beam_types.npy"
+            np.save(edges_path, np.asarray([[0, 1, 0.5], [1, 2, 2.0]], dtype=float))
+            np.save(ids_path, np.asarray([1, 0], dtype=int))
+
+            edges = _load_edges(
+                edges_path,
+                {
+                    "adjacency_format": "edge_list",
+                    "edge_material_ids": "beam_types.npy",
+                },
+                variable_thickness=True,
+                default_material="default",
+                material_lookup={},
+                base_dir=root,
+            )
+
+        self.assertEqual([(edge.weight, edge.material) for edge in edges], [
+            (0.5, "material_1"),
+            (2.0, "material_0"),
+        ])
 
     def test_configured_node_material_is_used_when_nodes_have_no_material_table(self):
         with tempfile.TemporaryDirectory() as tmp:

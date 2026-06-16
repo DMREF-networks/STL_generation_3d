@@ -233,6 +233,41 @@ source,target,thickness,material
 
 Set `"adjacency_format": "edge_list"` for that layout.
 
+Numeric material IDs are also supported for edge-list inputs. A four-column
+NumPy edge list can use:
+
+```text
+source, target, thickness, material_id
+```
+
+By default, numeric IDs map to material names such as `0 -> material_0` and
+`1 -> material_1`. Override the names with `material_id_map`:
+
+```json
+{
+  "material_id_map": {
+    "0": "rigid",
+    "1": "flexible"
+  }
+}
+```
+
+If you want to keep topology and beam types in separate files, use a shared
+edge list plus an aligned material-ID vector:
+
+```json
+{
+  "jobs": [
+    {
+      "positions": "network_xy.npy",
+      "adjacency": "network_adj.npy",
+      "adjacency_format": "edge_list",
+      "edge_material_ids": "beam_types.npy"
+    }
+  ]
+}
+```
+
 Edge-list column handling is intentionally permissive:
 
 | Columns | Meaning |
@@ -241,6 +276,7 @@ Edge-list column handling is intentionally permissive:
 | `source,target,thickness` | thickness column plus `default_material`; thickness is used only when `geometry.variable_thickness` is `true` |
 | `source,target,material` | default thickness plus per-edge material; use a header row so the third column is identified as material |
 | `source,target,thickness,material` | per-edge thickness and per-edge material |
+| `source,target,thickness,material_id` | per-edge thickness and numeric material IDs, commonly in `.npy` edge lists |
 
 Headerless three-column edge lists are ambiguous. Numeric third columns
 are treated as thickness when variable thickness is enabled. Text third
