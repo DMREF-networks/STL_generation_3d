@@ -1009,6 +1009,9 @@ PAGE = """<!doctype html>
       resultEl.innerHTML = "";
       setStatus("Generating STL files...");
       try {
+        if (!jsonDirty) {
+          render({ forceJson: true });
+        }
         const payload = await post("/generate", {
           config_path: el.configPath.value,
           config_text: el.configJson.value
