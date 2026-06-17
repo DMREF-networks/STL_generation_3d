@@ -441,6 +441,42 @@ class EdgeListDefaultsTest(unittest.TestCase):
             self.assertTrue(priority_node.is_watertight)
             self.assertTrue(priority_node.is_volume)
 
+    def test_node_material_priority_keeps_beams_when_nodes_cover_short_edges(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "xy.csv").write_text("0,0\n1,0\n", encoding="utf-8")
+            (root / "edges.csv").write_text("source,target,material\n0,1,beam\n", encoding="utf-8")
+            np.save(root / "node_diameters.npy", np.array([3.0, 3.0]))
+            config = {
+                "output_dir": "out",
+                "default_material": "beam",
+                "geometry": {
+                    "beam_diameter_mm": 0.2,
+                    "cube_side_length_mm": 1,
+                    "variable_thickness": False,
+                    "node_material": "node",
+                    "node_material_priority": True,
+                    "boolean_union": False,
+                    "sections": 8,
+                    "sphere_subdivisions": 0,
+                },
+                "jobs": [{
+                    "name": "covered",
+                    "positions": "xy.csv",
+                    "adjacency": "edges.csv",
+                    "node_diameters": "node_diameters.npy",
+                    "adjacency_format": "edge_list",
+                }],
+            }
+
+            result = generate_from_config_data(config, base_dir=root)["jobs"][0]
+
+        outputs = {output["material"]: output for output in result["outputs"]}
+        self.assertIn("beam", outputs)
+        self.assertIn("node", outputs)
+        self.assertTrue(result["warnings"])
+        self.assertIn("could not trim", result["warnings"][0])
+
 
 if __name__ == "__main__":
     unittest.main()

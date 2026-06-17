@@ -233,6 +233,8 @@ def _generate_job(
                 node_reservations,
                 sections,
                 beam_cross_section,
+                material=material,
+                warnings=warnings,
             )
         if not meshes:
             continue
@@ -869,12 +871,15 @@ def _apply_node_material_priority(
     node_reservations: Mapping[int, NodeReservation],
     sections: int,
     beam_cross_section: str,
+    material: Optional[str] = None,
+    warnings: Optional[List[str]] = None,
 ) -> List[trimesh.Trimesh]:
     if not beam_records:
         return meshes
 
     protected = []
     beam_count = min(len(meshes), len(beam_records))
+    untrimmed_count = 0
     for record in beam_records[:beam_count]:
         source_reservation = node_reservations.get(record.source)
         target_reservation = node_reservations.get(record.target)
@@ -892,6 +897,15 @@ def _apply_node_material_priority(
         )
         if cut_mesh is not None and not cut_mesh.is_empty:
             protected.append(cut_mesh)
+        else:
+            protected.append(record.mesh)
+            untrimmed_count += 1
+    if untrimmed_count and warnings is not None:
+        label = f" for material '{material}'" if material else ""
+        warnings.append(
+            f"Node material priority could not trim {untrimmed_count} beam(s){label} "
+            "because the node diameter covers the full beam segment; exported those beams untrimmed."
+        )
     protected.extend(meshes[beam_count:])
     return protected
 
