@@ -1,0 +1,32 @@
+{
+  "output_dir": "../../samples_output/delaunay_centroidal_stiffness_practice/angle_based",
+  "default_material": "stiffness_a",
+  "geometry": {
+    "beam_diameter_mm": 1.5,
+    "cube_side_length_mm": 80.0,
+    "variable_thickness": false,
+    "junction_policy": "dominant",
+    "boolean_union": false
+  },
+  "materials": {
+    "stiffness_a": {
+      "color": "#2563eb"
+    },
+    "stiffness_b": {
+      "color": "#dc2626"
+    }
+  },
+  "jobs": [
+    {
+      "name": "delaunay_centroidal_angle_based_stiffness",
+      "positions": "nodes.npy",
+      "adjacency": "edges_angle_material_codes.npy",
+      "adjacency_format": "edge_list",
+      "edge_list_interpretation": "material",
+      "edge_material_map": {
+        "0": "stiffness_a",
+        "1": "stiffness_b"
+      }
+    }
+  ]
+}

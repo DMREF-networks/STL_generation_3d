@@ -1,0 +1,31 @@
+{
+  "output_dir": "../../samples_output/delaunay_centroidal_stiffness_practice/default_bigger_nodes",
+  "default_material": "stiffness_a",
+  "geometry": {
+    "beam_diameter_mm": 1.5,
+    "cube_side_length_mm": 80.0,
+    "variable_thickness": false,
+    "junction_policy": "dominant",
+    "boolean_union": true,
+    "node_material": "node_material",
+    "node_material_priority": true
+  },
+  "materials": {
+    "stiffness_a": {
+      "color": "#2563eb"
+    },
+    "node_material": {
+      "color": "#f59e0b"
+    }
+  },
+  "jobs": [
+    {
+      "name": "delaunay_centroidal_default_bigger_nodes",
+      "positions": "nodes.npy",
+      "node_diameters": "node_diameters_2mm.npy",
+      "adjacency": "edges_plain.npy",
+      "adjacency_format": "edge_list",
+      "edge_list_interpretation": "legacy"
+    }
+  ]
+}

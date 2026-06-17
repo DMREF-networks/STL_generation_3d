@@ -121,6 +121,11 @@ def _generate_job(
 
     positions_path = _required_path(job, "positions", "xy")
     adjacency_path = _required_path(job, "adjacency", "adj")
+    node_diameters_path = (
+        job.get("node_diameters")
+        or job.get("node_diameters_file")
+        or job.get("node_diameter_file")
+    )
     output_dir = _resolve_path(base_dir, job.get("output_dir", root_config.get("output_dir", ".")))
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -162,6 +167,11 @@ def _generate_job(
 
     positions = _load_positions(_resolve_path(base_dir, positions_path))
     positions = _normalize_positions(positions, cube_side)
+    node_diameters = (
+        _load_node_diameters(_resolve_path(base_dir, node_diameters_path), len(positions))
+        if node_diameters_path
+        else None
+    )
 
     material_lookup = _load_material_lookup(job, base_dir)
     edges = _load_edges(
@@ -204,6 +214,7 @@ def _generate_job(
         node_material=node_material,
         sphere_subdivisions=sphere_subdivisions,
         node_radius_scale=node_radius_scale,
+        node_diameters=node_diameters,
     )
 
     outputs = []
@@ -661,6 +672,25 @@ def _load_positions(path: Path) -> np.ndarray:
     return data[:, :3]
 
 
+def _load_node_diameters(path: Path, node_count: int) -> np.ndarray:
+    data = _load_numeric_array(path)
+    diameters = np.asarray(data, dtype=float)
+    if diameters.ndim == 2:
+        if diameters.shape[1] == 1:
+            diameters = diameters[:, 0]
+        elif diameters.shape[0] == 1:
+            diameters = diameters.reshape(-1)
+        else:
+            raise ValueError("node_diameters must be a one-column array or a 1D array.")
+    if diameters.ndim != 1:
+        raise ValueError("node_diameters must be a one-column array or a 1D array.")
+    if len(diameters) != node_count:
+        raise ValueError(f"node_diameters length {len(diameters)} must match node count {node_count}.")
+    if np.any(~np.isfinite(diameters)) or np.any(diameters <= 0):
+        raise ValueError("node_diameters values must be finite positive diameters in millimeters.")
+    return diameters
+
+
 def _load_numeric_array(path: Path) -> np.ndarray:
     if not path.exists():
         raise ValueError(f"File not found: {path}")
@@ -745,13 +775,17 @@ def _add_junction_spheres(
     node_material: Optional[str],
     sphere_subdivisions: int,
     node_radius_scale: float,
+    node_diameters: Optional[np.ndarray] = None,
 ) -> Dict[int, NodeReservation]:
     node_reservations = {}
     for idx, material_weights in incident.items():
         if not material_weights:
             continue
         max_weight = max(weight for _, weight in material_weights)
-        radius = beam_diameter / 2.0 * max_weight * node_radius_scale
+        if node_diameters is None:
+            radius = beam_diameter / 2.0 * max_weight * node_radius_scale
+        else:
+            radius = float(node_diameters[idx]) / 2.0
         if radius <= 0:
             continue
 

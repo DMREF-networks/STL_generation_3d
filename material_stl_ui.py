@@ -414,6 +414,12 @@ PAGE = """<!doctype html>
             <button class="browse" data-target="positions" data-kind="positions">Choose</button>
           </div>
           <div class="field-row">
+            <label>Node diameters file
+              <input id="nodeDiameters" placeholder="optional .npy/.csv/.pkl path">
+            </label>
+            <button class="browse" data-target="nodeDiameters" data-kind="node_diameters">Choose</button>
+          </div>
+          <div class="field-row">
             <label>Adjacency or edge-list file
               <input id="adjacency" value="demo_adj.csv">
             </label>
@@ -577,7 +583,7 @@ PAGE = """<!doctype html>
 
   <script>
     const ids = [
-      "configPath", "jobName", "outputDir", "positions", "adjacency",
+      "configPath", "jobName", "outputDir", "positions", "nodeDiameters", "adjacency",
       "adjacencyFormat", "edgeListInterpretation", "materialMode", "materialMatrix", "edgeMaterials",
       "defaultMaterial", "nodeMaterialMode", "nodeMaterial", "mixedJunctionMaterial",
       "junctionPolicy", "beamDiameter", "sideLength", "variableThickness",
@@ -789,6 +795,9 @@ PAGE = """<!doctype html>
         adjacency: el.adjacency.value.trim(),
         adjacency_format: el.adjacencyFormat.value
       };
+      if (el.nodeDiameters.value.trim()) {
+        job.node_diameters = el.nodeDiameters.value.trim();
+      }
       if (el.adjacencyFormat.value === "edge_list") {
         job.edge_list_interpretation = el.edgeListInterpretation.value;
         if (usesEdgeMaterialMap()) {
@@ -864,6 +873,7 @@ PAGE = """<!doctype html>
       el.jobName.value = job.name || "network";
       el.outputDir.value = config.output_dir || job.output_dir || ".";
       el.positions.value = job.positions || job.xy || "";
+      el.nodeDiameters.value = job.node_diameters || job.node_diameters_file || job.node_diameter_file || "";
       el.adjacency.value = job.adjacency || job.adj || "";
       el.adjacencyFormat.value = job.adjacency_format || "auto";
       el.edgeListInterpretation.value = inferEdgeListInterpretation(job, geometry);
@@ -1282,6 +1292,7 @@ def _dialog_title(kind: str) -> str:
     titles = {
         "config": "Open config JSON",
         "positions": "Choose node positions file",
+        "node_diameters": "Choose node diameters file",
         "adjacency": "Choose adjacency or edge-list file",
         "material_matrix": "Choose material matrix file",
         "edge_materials": "Choose edge-material table",
@@ -1294,7 +1305,7 @@ def _dialog_filetypes(kind: str) -> Iterable[Tuple[str, str]]:
         return [("JSON files", "*.json"), ("All files", "*")]
     if kind == "edge_materials":
         return [("CSV files", "*.csv"), ("All files", "*")]
-    if kind in {"positions", "adjacency", "material_matrix"}:
+    if kind in {"positions", "node_diameters", "adjacency", "material_matrix"}:
         return [("CSV, NumPy, and pickle files", "*.csv *.npy *.pkl *.pickle"), ("CSV files", "*.csv"), ("NumPy files", "*.npy"), ("Pickle files", "*.pkl *.pickle"), ("All files", "*")]
     return [("All files", "*")]
 

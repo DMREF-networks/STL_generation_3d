@@ -50,6 +50,7 @@ Each network needs:
 
 - an `xy` file containing node positions
 - an `adj` file containing connectivity
+- optionally, a `node_diameters` file containing one node diameter per node
 
 The interactive converter pairs files by name:
 
@@ -75,6 +76,11 @@ network_adj_0.1.npy
 Position files may have two columns (`x, y`) or three columns
 (`x, y, z`). Two-dimensional positions are automatically placed on
 `z = 0`.
+
+Optional node-diameter files may be CSV, NumPy `.npy`, or pickle `.pkl`
+numeric arrays with shape `(N,)` or `(N, 1)`, where `N` is the number of
+nodes. Values are absolute node sphere diameters in millimeters after the
+network has been scaled to `cube_side_length_mm`.
 
 Adjacency data can be either:
 
@@ -176,9 +182,10 @@ The converter supports two methods:
   then extrudes the result. This is only for flat 2D networks, but it is
   usually more robust for thin planar networks.
 
-Node junctions are sized per node. Each junction sphere or disc uses the
-thickest beam touching that node. Isolated nodes do not get junction
-geometry.
+Node junctions are sized per node. By default, each junction sphere or
+disc uses the thickest beam touching that node. If a job sets
+`node_diameters`, those file values are used instead. Isolated nodes do not
+get junction geometry.
 
 ## Multi-Material STL Output
 
@@ -237,6 +244,16 @@ same-shape material matrix:
 The material matrix must have the same shape as the adjacency matrix.
 Cell `(i, j)` names the material for edge `(i, j)`. Empty, `0`, `none`,
 `null`, or `nan` cells fall back to `default_material`.
+
+To use per-node diameters, add a `node_diameters` file path to the job:
+
+```json
+{
+  "positions": "nodes.npy",
+  "node_diameters": "node_diameters.npy",
+  "adjacency": "edges.npy"
+}
+```
 
 For edge-list inputs, material can be carried directly in the edge file:
 
@@ -324,7 +341,8 @@ Node junctions are controlled by `geometry.node_material` and
 - `geometry.node_radius_scale` controls the radius of generated junction
   spheres relative to the thickest incident beam radius. The default is
   `1.0`; values like `1.25` or `1.35` make the node material visibly
-  protrude around beam junctions.
+  protrude around beam junctions. If the job has a `node_diameters` file,
+  those absolute diameters are used instead of this automatic scale rule.
 - `separate`: same-material nodes stay with that material; mixed nodes
   are written to `mixed_junction_material`.
 - `dominant`: mixed nodes go to the material with the largest total

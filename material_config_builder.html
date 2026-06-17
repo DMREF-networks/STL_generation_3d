@@ -288,6 +288,9 @@
           <label>Positions file
             <input id="positions" value="sample_configs/demo_xy.csv">
           </label>
+          <label>Node diameters file
+            <input id="nodeDiameters" placeholder="optional .npy/.csv/.pkl path">
+          </label>
           <label>Adjacency file
             <input id="adjacency" value="sample_configs/demo_adj.csv">
           </label>
@@ -464,7 +467,7 @@
     };
 
     const ids = [
-      "jobName", "outputDir", "positions", "adjacency", "adjacencyFormat", "edgeListInterpretation",
+      "jobName", "outputDir", "positions", "nodeDiameters", "adjacency", "adjacencyFormat", "edgeListInterpretation",
       "materialMatrix", "edgeMaterials", "defaultMaterial", "beamDiameter",
       "sideLength", "nodeMaterialMode", "junctionPolicy", "nodeMaterial", "mixedJunctionMaterial",
       "variableThickness", "booleanUnion", "configFileName"
@@ -591,6 +594,7 @@
         adjacency: el.adjacency.value.trim(),
         adjacency_format: el.adjacencyFormat.value
       };
+      if (el.nodeDiameters.value.trim()) job.node_diameters = el.nodeDiameters.value.trim();
       if (el.adjacencyFormat.value === "edge_list") {
         job.edge_list_interpretation = el.edgeListInterpretation.value;
         if (usesEdgeMaterialMap()) {
@@ -667,6 +671,7 @@
       el.jobName.value = job.name || "network";
       el.outputDir.value = config.output_dir || job.output_dir || ".";
       el.positions.value = job.positions || job.xy || "";
+      el.nodeDiameters.value = job.node_diameters || job.node_diameters_file || job.node_diameter_file || "";
       el.adjacency.value = job.adjacency || job.adj || "";
       el.adjacencyFormat.value = job.adjacency_format || "auto";
       el.edgeListInterpretation.value = inferEdgeListInterpretation(job, geometry);

@@ -1,13 +1,16 @@
 import pickle
 import tempfile
 import unittest
+from collections import defaultdict
 from pathlib import Path
 
 import numpy as np
 import trimesh
 
 from config_to_stl import generate_from_config_data
+from config_to_stl import _add_junction_spheres
 from config_to_stl import _load_edges
+from config_to_stl import _load_node_diameters
 
 
 class EdgeListDefaultsTest(unittest.TestCase):
@@ -283,6 +286,52 @@ class EdgeListDefaultsTest(unittest.TestCase):
 
         materials = {output["material"] for output in result["jobs"][0]["outputs"]}
         self.assertEqual(materials, {"edge_default", "node_default"})
+
+    def test_node_diameters_file_must_match_node_count_and_be_positive(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            valid_path = root / "node_diameters.npy"
+            np.save(valid_path, np.array([[0.1], [0.2], [0.3]]))
+            bad_length_path = root / "bad_length.npy"
+            np.save(bad_length_path, np.array([0.1, 0.2]))
+            bad_value_path = root / "bad_value.npy"
+            np.save(bad_value_path, np.array([0.1, 0.0, 0.3]))
+
+            diameters = _load_node_diameters(valid_path, 3)
+
+            with self.assertRaisesRegex(ValueError, "must match node count"):
+                _load_node_diameters(bad_length_path, 3)
+            with self.assertRaisesRegex(ValueError, "finite positive"):
+                _load_node_diameters(bad_value_path, 3)
+
+        np.testing.assert_allclose(diameters, [0.1, 0.2, 0.3])
+
+    def test_explicit_node_diameters_override_automatic_node_radius_scale(self):
+        positions = np.array([
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+        ])
+        meshes_by_material = defaultdict(list)
+
+        reservations = _add_junction_spheres(
+            positions,
+            {
+                0: [("beam", 1.0)],
+                1: [("beam", 3.0)],
+            },
+            meshes_by_material,
+            beam_diameter=10.0,
+            junction_policy="separate",
+            mixed_junction_material="mixed",
+            node_material="node",
+            sphere_subdivisions=0,
+            node_radius_scale=99.0,
+            node_diameters=np.array([0.4, 0.8]),
+        )
+
+        self.assertEqual(sorted(reservations), [0, 1])
+        self.assertAlmostEqual(reservations[0].radius, 0.2)
+        self.assertAlmostEqual(reservations[1].radius, 0.4)
 
     def test_per_material_junction_policy_is_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:

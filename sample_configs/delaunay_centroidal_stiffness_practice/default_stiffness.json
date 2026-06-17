@@ -1,0 +1,25 @@
+{
+  "output_dir": "../../samples_output/delaunay_centroidal_stiffness_practice/default",
+  "default_material": "stiffness_a",
+  "geometry": {
+    "beam_diameter_mm": 1.5,
+    "cube_side_length_mm": 80.0,
+    "variable_thickness": false,
+    "junction_policy": "dominant",
+    "boolean_union": true
+  },
+  "materials": {
+    "stiffness_a": {
+      "color": "#2563eb"
+    }
+  },
+  "jobs": [
+    {
+      "name": "delaunay_centroidal_default_stiffness",
+      "positions": "nodes.npy",
+      "adjacency": "edges_plain.npy",
+      "adjacency_format": "edge_list",
+      "edge_list_interpretation": "legacy"
+    }
+  ]
+}

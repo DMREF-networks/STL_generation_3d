@@ -1,0 +1,45 @@
+{
+  "source": "sample_configs/huppi_periodic_a05_demo/delaunay_centroidal",
+  "node_file": "nodes.npy",
+  "node_diameters_file": "node_diameters_2mm.npy",
+  "plain_edge_file": "edges_plain.npy",
+  "node_count": 358,
+  "edge_count": 467,
+  "beam_diameter_mm": 1.5,
+  "random_seed": 20260617,
+  "material_code_map": {
+    "0": "stiffness_a",
+    "1": "stiffness_b"
+  },
+  "variants": {
+    "default": {
+      "config": "default_stiffness.json",
+      "edges": "edges_plain.npy",
+      "material": "stiffness_a"
+    },
+    "random_50_50": {
+      "config": "random_50_50_stiffness.json",
+      "edges": "edges_random_material_codes.npy",
+      "counts": {
+        "0": 233,
+        "1": 234
+      }
+    },
+    "angle_based": {
+      "config": "angle_based_stiffness.json",
+      "edges": "edges_angle_material_codes.npy",
+      "rule": "code 1 when abs(dy) > abs(dx), otherwise code 0",
+      "counts": {
+        "0": 239,
+        "1": 228
+      }
+    },
+    "default_bigger_nodes": {
+      "config": "default_bigger_nodes.json",
+      "edges": "edges_plain.npy",
+      "node_diameters": "node_diameters_2mm.npy",
+      "edge_material": "stiffness_a",
+      "node_material": "node_material"
+    }
+  }
+}
