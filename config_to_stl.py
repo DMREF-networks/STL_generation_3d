@@ -3,12 +3,14 @@
 The core design is intentionally conservative:
 
 * adjacency values stay numeric and mean connectivity / thickness
-* material assignments live beside the adjacency data, not inside it
+* material assignments live beside the adjacency data or in explicit edge-list
+  material-code columns
 * every material group is exported as a separate STL in the same coordinate
   frame, so slicers can import them together and assign extruders/materials
 
 For adjacency matrices, use a same-shape material matrix or an edge-material
-table. For edge lists, the material can be a fourth column.
+table. For edge lists, use edge_list_interpretation to define whether extra
+columns are thickness, material codes, or both.
 """
 
 from __future__ import annotations
@@ -55,6 +57,18 @@ class BeamRecord:
     source: int
     target: int
     diameter: float
+
+
+@dataclass(frozen=True)
+class EdgeListColumnConfig:
+    source_col: int
+    target_col: int
+    thickness_col: Optional[int]
+    material_col: Optional[int]
+    use_thickness: bool
+    explicit_material: bool
+    allow_ambiguous_text_thickness: bool
+    allow_material_heuristic: bool
 
 
 @dataclass(frozen=True)
@@ -114,6 +128,12 @@ def _generate_job(
     beam_diameter = float(geometry.get("beam_diameter_mm", geometry.get("beam_diameter", 1.0)))
     cube_side = float(geometry.get("cube_side_length_mm", geometry.get("cube_side_length", 1.0)))
     variable_thickness = bool(geometry.get("variable_thickness", False))
+    adjacency_format = str(job.get("adjacency_format", "auto")).strip().lower().replace("-", "_")
+    edge_interpretation = None if adjacency_format == "matrix" else _edge_list_interpretation(job)
+    if edge_interpretation in {"legacy", "material"}:
+        variable_thickness = False
+    elif edge_interpretation in {"thickness", "thickness_material"}:
+        variable_thickness = True
     sections = int(geometry.get("sections", 32))
     sphere_subdivisions = int(geometry.get("sphere_subdivisions", 2))
     boolean_union = bool(geometry.get("boolean_union", True))
@@ -264,7 +284,7 @@ def _load_edges(
 
     if matrix.ndim == 2 and matrix.shape[0] == matrix.shape[1]:
         return _edges_from_matrix(matrix, job, base_dir, variable_thickness, default_material, material_lookup)
-    return _edges_from_numeric_edge_list(matrix, variable_thickness, default_material, material_lookup)
+    return _edges_from_numeric_edge_list(matrix, job, variable_thickness, default_material, material_lookup)
 
 
 def _edges_from_matrix(
@@ -314,8 +334,8 @@ def _load_edge_list(
     if path.suffix.lower() == ".npy":
         data = np.load(path, allow_pickle=True)
         if data.dtype.kind in {"U", "S", "O"}:
-            return _edges_from_string_edge_rows(data.tolist(), variable_thickness, default_material, material_lookup)
-        return _edges_from_numeric_edge_list(data, variable_thickness, default_material, material_lookup)
+            return _edges_from_string_edge_rows(data.tolist(), job, variable_thickness, default_material, material_lookup)
+        return _edges_from_numeric_edge_list(data, job, variable_thickness, default_material, material_lookup)
 
     if path.suffix.lower() in {".pkl", ".pickle"}:
         return _edges_from_pickle_edge_list(_load_pickle(path), job, variable_thickness, default_material, material_lookup)
@@ -323,38 +343,144 @@ def _load_edge_list(
     rows = _read_csv_rows(path)
     header = _header_map(rows[0]) if rows and _looks_like_header(rows[0]) else None
     data_rows = rows[1:] if header else rows
-    columns = job.get("edge_columns") or {}
-    source_col = _column_index(columns.get("source", columns.get("from")), header, 0)
-    target_col = _column_index(columns.get("target", columns.get("to")), header, 1)
-    thickness_col = _column_index(columns.get("thickness", columns.get("weight")), header, 2)
-    material_col = _column_index(columns.get("material"), header, 3)
+    columns = _edge_list_column_config(
+        job,
+        header,
+        variable_thickness,
+    )
+    material_map = _edge_material_map(job)
 
     edges = []
     for line_number, row in enumerate(data_rows, start=2 if header else 1):
         if not row:
             continue
         try:
-            source = int(float(row[source_col]))
-            target = int(float(row[target_col]))
+            source = int(float(row[columns.source_col]))
+            target = int(float(row[columns.target_col]))
         except (IndexError, ValueError) as exc:
             raise ValueError(f"Invalid edge endpoints in {path} line {line_number}: {row}") from exc
 
         weight = _edge_weight_from_row(
             row,
-            thickness_col,
-            variable_thickness,
+            columns.thickness_col,
+            columns.use_thickness,
             has_header=header is not None,
             source=f"{path} line {line_number}",
+            allow_ambiguous_text_thickness=columns.allow_ambiguous_text_thickness,
         )
-        material = _edge_material_from_row(row, material_col, default_material, has_header=header is not None)
+        material = _edge_material_from_row(
+            row,
+            columns.material_col,
+            default_material,
+            has_header=header is not None,
+            material_map=material_map,
+            explicit_material=columns.explicit_material,
+            allow_heuristic=columns.allow_material_heuristic,
+        )
         material = material_lookup.get(_edge_key(source, target), material)
         if weight > 0:
             edges.append(Edge(source, target, weight, material))
     return edges
 
 
+def _edge_list_column_config(
+    job: Mapping[str, Any],
+    header: Optional[Mapping[str, int]],
+    variable_thickness: bool,
+) -> EdgeListColumnConfig:
+    columns = job.get("edge_columns") or {}
+    interpretation = _edge_list_interpretation(job)
+
+    source_col = _column_index(columns.get("source", columns.get("from")), header, 0)
+    target_col = _column_index(columns.get("target", columns.get("to")), header, 1)
+
+    if interpretation == "legacy":
+        return EdgeListColumnConfig(source_col, target_col, None, None, False, False, False, False)
+    if interpretation == "thickness":
+        return EdgeListColumnConfig(
+            source_col,
+            target_col,
+            _column_index(columns.get("thickness", columns.get("weight")), header, 2),
+            None,
+            True,
+            False,
+            False,
+            False,
+        )
+    if interpretation == "material":
+        return EdgeListColumnConfig(
+            source_col,
+            target_col,
+            None,
+            _column_index(columns.get("material"), header, 2),
+            False,
+            True,
+            False,
+            False,
+        )
+    if interpretation == "thickness_material":
+        return EdgeListColumnConfig(
+            source_col,
+            target_col,
+            _column_index(columns.get("thickness", columns.get("weight")), header, 2),
+            _column_index(columns.get("material"), header, 3),
+            True,
+            True,
+            False,
+            False,
+        )
+
+    thickness_col = _column_index(columns.get("thickness", columns.get("weight")), header, 2)
+    material_col = _column_index(columns.get("material"), header, 3)
+    return EdgeListColumnConfig(
+        source_col,
+        target_col,
+        thickness_col,
+        material_col,
+        variable_thickness,
+        False,
+        True,
+        True,
+    )
+
+
+def _edge_list_interpretation(job: Mapping[str, Any]) -> Optional[str]:
+    value = job.get("edge_list_interpretation") or job.get("edge_interpretation")
+    if value is None:
+        return None
+    normalized = str(value).strip().lower().replace("-", "_").replace(" ", "_")
+    aliases = {
+        "uniform": "legacy",
+        "ignore_extra_columns": "legacy",
+        "ignore_extra": "legacy",
+        "legacy_edges": "legacy",
+        "thickness_column": "thickness",
+        "edge_thickness": "thickness",
+        "material_column": "material",
+        "material_type": "material",
+        "beam_type": "material",
+        "thickness_and_material": "thickness_material",
+        "thickness_material_column": "thickness_material",
+    }
+    normalized = aliases.get(normalized, normalized)
+    valid = {"legacy", "thickness", "material", "thickness_material"}
+    if normalized not in valid:
+        raise ValueError(f"edge_list_interpretation must be one of: {', '.join(sorted(valid))}.")
+    return normalized
+
+
+def _edge_material_map(job: Mapping[str, Any]) -> Dict[str, str]:
+    value = job.get("edge_material_map") or job.get("material_code_map") or {}
+    if not value:
+        return {}
+    if not isinstance(value, Mapping):
+        raise ValueError("edge_material_map must be an object.")
+    return {_material_code_key(code): str(material) for code, material in value.items()}
+
+
 def _edges_from_numeric_edge_list(
     data: np.ndarray,
+    job: Mapping[str, Any],
     variable_thickness: bool,
     default_material: str,
     material_lookup: Mapping[Tuple[int, int], str],
@@ -364,13 +490,37 @@ def _edges_from_numeric_edge_list(
         data = data.reshape(1, -1)
     if data.ndim != 2 or data.shape[1] < 2:
         raise ValueError("Edge-list adjacency input must have at least two columns.")
+    columns = _edge_list_column_config(
+        job,
+        header=None,
+        variable_thickness=variable_thickness,
+    )
+    material_map = _edge_material_map(job)
 
     edges = []
-    for row in data:
-        source = int(row[0])
-        target = int(row[1])
-        weight = float(row[2]) if variable_thickness and len(row) >= 3 else 1.0
-        material = default_material
+    for row_index, row in enumerate(data, start=1):
+        try:
+            source = int(row[columns.source_col])
+            target = int(row[columns.target_col])
+        except (IndexError, ValueError) as exc:
+            raise ValueError(f"Invalid edge endpoints in row {row_index}: {row}") from exc
+        weight = _edge_weight_from_row(
+            row,
+            columns.thickness_col,
+            columns.use_thickness,
+            has_header=False,
+            source=f"edge row {row_index}",
+            allow_ambiguous_text_thickness=columns.allow_ambiguous_text_thickness,
+        )
+        material = _edge_material_from_row(
+            row,
+            columns.material_col,
+            default_material,
+            has_header=False,
+            material_map=material_map,
+            explicit_material=columns.explicit_material,
+            allow_heuristic=columns.allow_material_heuristic,
+        )
         material = material_lookup.get(_edge_key(source, target), material)
         if weight > 0:
             edges.append(Edge(source, target, weight, material))
@@ -379,6 +529,7 @@ def _edges_from_numeric_edge_list(
 
 def _edges_from_string_edge_rows(
     rows: Iterable[Iterable[Any]],
+    job: Mapping[str, Any],
     variable_thickness: bool,
     default_material: str,
     material_lookup: Mapping[Tuple[int, int], str],
@@ -388,22 +539,33 @@ def _edges_from_string_edge_rows(
         return []
     header = _header_map(rows[0]) if _looks_like_header(rows[0]) else None
     data_rows = rows[1:] if header else rows
-    source_col = _column_index(None, header, 0)
-    target_col = _column_index(None, header, 1)
-    thickness_col = _column_index(None, header, 2)
-    material_col = _column_index(None, header, 3)
+    columns = _edge_list_column_config(
+        job,
+        header,
+        variable_thickness,
+    )
+    material_map = _edge_material_map(job)
     edges = []
     for line_number, row in enumerate(data_rows, start=2 if header else 1):
-        source = int(float(row[source_col]))
-        target = int(float(row[target_col]))
+        source = int(float(row[columns.source_col]))
+        target = int(float(row[columns.target_col]))
         weight = _edge_weight_from_row(
             row,
-            thickness_col,
-            variable_thickness,
+            columns.thickness_col,
+            columns.use_thickness,
             has_header=header is not None,
             source=f"edge row {line_number}",
+            allow_ambiguous_text_thickness=columns.allow_ambiguous_text_thickness,
         )
-        material = _edge_material_from_row(row, material_col, default_material, has_header=header is not None)
+        material = _edge_material_from_row(
+            row,
+            columns.material_col,
+            default_material,
+            has_header=header is not None,
+            material_map=material_map,
+            explicit_material=columns.explicit_material,
+            allow_heuristic=columns.allow_material_heuristic,
+        )
         material = material_lookup.get(_edge_key(source, target), material)
         if weight > 0:
             edges.append(Edge(source, target, weight, material))
@@ -419,15 +581,15 @@ def _edges_from_pickle_edge_list(
 ) -> List[Edge]:
     rows, header = _pickle_edge_rows_and_header(data)
     if header:
-        return _edges_from_string_edge_rows([header] + rows, variable_thickness, default_material, material_lookup)
+        return _edges_from_string_edge_rows([header] + rows, job, variable_thickness, default_material, material_lookup)
 
     if _looks_like_mapping_records(rows):
-        return _edges_from_mapping_edge_records(rows, variable_thickness, default_material, material_lookup)
+        return _edges_from_mapping_edge_records(rows, job, variable_thickness, default_material, material_lookup)
 
     array = np.asarray(rows)
     if array.dtype.kind in {"U", "S", "O"}:
-        return _edges_from_string_edge_rows(array.tolist(), variable_thickness, default_material, material_lookup)
-    return _edges_from_numeric_edge_list(array, variable_thickness, default_material, material_lookup)
+        return _edges_from_string_edge_rows(array.tolist(), job, variable_thickness, default_material, material_lookup)
+    return _edges_from_numeric_edge_list(array, job, variable_thickness, default_material, material_lookup)
 
 
 def _load_material_lookup(job: Mapping[str, Any], base_dir: Path) -> Dict[Tuple[int, int], str]:
@@ -954,6 +1116,7 @@ def _edge_weight_from_row(
     variable_thickness: bool,
     has_header: bool,
     source: str,
+    allow_ambiguous_text_thickness: bool,
 ) -> float:
     if not variable_thickness or thickness_col is None or thickness_col >= len(row):
         return 1.0
@@ -965,7 +1128,7 @@ def _edge_weight_from_row(
     # Headerless three-column files are ambiguous: source,target,thickness
     # and source,target,material are both common. Text in the third column is
     # treated as material, with default thickness.
-    if not has_header and len(row) == 3 and thickness_col == 2:
+    if allow_ambiguous_text_thickness and not has_header and len(row) == 3 and thickness_col == 2:
         return 1.0
 
     raise ValueError(f"Invalid edge thickness in {source}: {row[thickness_col]!r}")
@@ -976,11 +1139,15 @@ def _edge_material_from_row(
     material_col: Optional[int],
     default_material: str,
     has_header: bool,
+    material_map: Optional[Mapping[str, str]] = None,
+    explicit_material: bool = False,
+    allow_heuristic: bool = True,
 ) -> str:
+    material_map = material_map or {}
     if material_col is not None and material_col < len(row):
-        return _clean_material(row[material_col], default_material)
-    if not has_header and len(row) == 3 and _float_or_none(row[2]) is None:
-        return _clean_material(row[2], default_material)
+        return _material_from_code(row[material_col], default_material, material_map, explicit_material)
+    if allow_heuristic and not has_header and len(row) == 3 and _float_or_none(row[2]) is None:
+        return _material_from_code(row[2], default_material, material_map, explicit_material)
     return default_material
 
 
@@ -989,6 +1156,31 @@ def _float_or_none(value: Any) -> Optional[float]:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def _material_from_code(
+    value: Any,
+    default_material: str,
+    material_map: Mapping[str, str],
+    explicit_material: bool,
+) -> str:
+    text = "" if value is None else str(value).strip()
+    if text == "" or text.lower() in {"none", "nan", "null"}:
+        return default_material
+    key = _material_code_key(value)
+    if key in material_map:
+        return material_map[key]
+    if explicit_material and _float_or_none(text) is not None:
+        return f"material_{key}"
+    return _clean_material(value, default_material)
+
+
+def _material_code_key(value: Any) -> str:
+    text = "" if value is None else str(value).strip()
+    number = _float_or_none(text)
+    if number is not None and math.isfinite(number) and number.is_integer():
+        return str(int(number))
+    return text
 
 
 def _load_pickle(path: Path) -> Any:
@@ -1075,10 +1267,28 @@ def _records_from_column_mapping(mapping: Mapping[str, Any]) -> List[Dict[str, A
 
 def _edges_from_mapping_edge_records(
     rows: Iterable[Mapping[str, Any]],
+    job: Mapping[str, Any],
     variable_thickness: bool,
     default_material: str,
     material_lookup: Mapping[Tuple[int, int], str],
 ) -> List[Edge]:
+    material_map = _edge_material_map(job)
+    interpretation = _edge_list_interpretation(job)
+    use_thickness = variable_thickness
+    use_material = True
+    if interpretation == "legacy":
+        use_thickness = False
+        use_material = False
+    elif interpretation == "thickness":
+        use_thickness = True
+        use_material = False
+    elif interpretation == "material":
+        use_thickness = False
+        use_material = True
+    elif interpretation == "thickness_material":
+        use_thickness = True
+        use_material = True
+
     edges = []
     for row_index, row in enumerate(rows, start=1):
         try:
@@ -1088,9 +1298,16 @@ def _edges_from_mapping_edge_records(
             raise ValueError(f"Invalid edge endpoints in pickle record {row_index}: {row}") from exc
 
         thickness_value = _mapping_column_value(row, "thickness", default=None)
-        weight = float(thickness_value) if variable_thickness and thickness_value is not None else 1.0
-        material_value = _mapping_column_value(row, "material", default=None)
-        material = _clean_material(material_value, default_material)
+        weight = float(thickness_value) if use_thickness and thickness_value is not None else 1.0
+        material = default_material
+        if use_material:
+            material_value = _mapping_column_value(row, "material", default=None)
+            material = _material_from_code(
+                material_value,
+                default_material,
+                material_map,
+                explicit_material=material_value is not None,
+            )
         material = material_lookup.get(_edge_key(source, target), material)
         if weight > 0:
             edges.append(Edge(source, target, weight, material))

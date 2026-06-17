@@ -83,8 +83,10 @@ Adjacency data can be either:
   `(source, target, thickness)`, `(source, target, material)`, or
   `(source, target, thickness, material)`
 
-For `.npy` edge-list inputs, the existing sample data uses an `(E, 3)`
-array.
+For `.npy` edge-list inputs, use `edge_list_interpretation` in the
+saved config to define what extra columns mean. This keeps legacy
+`(E, 3)` edge lists whose third column is edge length separate from new
+`(E, 3)` files whose third column is thickness or material code.
 
 ## Standard STL Generation
 
@@ -130,6 +132,12 @@ already have a JSON config, use `Load Config` to populate the form before
 generating. The advanced JSON panel is still available for manual edits,
 but it is not required for the normal workflow.
 
+For edge-list NumPy files, set `Edge list interpretation` explicitly.
+If the selected interpretation uses material codes, the `Edge Material
+Codes` table maps values such as `0`, `1`, `2`, and `3` to material
+names. That mapping is saved in the generated config as
+`edge_material_map`.
+
 If the file picker cannot open in your environment, paste the file path
 into the field instead.
 
@@ -144,12 +152,18 @@ If variable thickness is enabled, adjacency values become scale factors:
 edge_diameter = beam_diameter * adjacency_value
 ```
 
-For edge-list inputs, the thickness defaults are:
+For edge-list inputs, the default edge thickness is `1.0`, meaning one
+base beam diameter. The UI exposes this as an explicit edge-list
+interpretation instead of a separate scale factor:
 
-- two columns, `source,target`: every edge uses weight `1.0`
-- three numeric columns, `source,target,thickness`: the third column is
-  used only when variable thickness is enabled
-- if variable thickness is disabled, every edge uses weight `1.0`
+- `legacy`: `source,target[,length]`; extra columns are ignored and
+  every edge uses thickness `1.0`
+- `thickness`: `source,target,thickness`; column 3 is the edge thickness
+  multiplier
+- `material`: `source,target,material_code`; column 3 is a material name
+  or integer material code
+- `thickness_material`: `source,target,thickness,material_code`; column
+  3 is thickness and column 4 is material name/code
 
 ## Meshing Methods
 
@@ -232,7 +246,32 @@ source,target,thickness,material
 1,2,0.6,flexible
 ```
 
-Set `"adjacency_format": "edge_list"` for that layout.
+Set `"adjacency_format": "edge_list"` for that layout. For headerless
+NumPy edge lists, also set `edge_list_interpretation` so the loader does
+not have to guess:
+
+```json
+{
+  "jobs": [
+    {
+      "name": "coded_edges",
+      "positions": "nodes.npy",
+      "adjacency": "edges.npy",
+      "adjacency_format": "edge_list",
+      "edge_list_interpretation": "material",
+      "edge_material_map": {
+        "0": "material_a",
+        "1": "material_b",
+        "2": "support_material"
+      }
+    }
+  ]
+}
+```
+
+`edge_material_map` records what integer values in the edge list meant
+when the config was generated. If a material-code column contains text
+material names instead of integers, those names are used directly.
 
 Pickle edge lists can carry explicit column metadata, which avoids guessing
 whether a third column means thickness or material. Use a `.pkl` containing
@@ -257,19 +296,20 @@ or a dictionary with `columns` and `edges`:
 }
 ```
 
-Edge-list column handling is intentionally permissive:
+Edge-list column handling is intentionally explicit when
+`edge_list_interpretation` is present:
 
-| Columns | Meaning |
-| --- | --- |
-| `source,target` | default thickness, `default_material` |
-| `source,target,thickness` | thickness column plus `default_material`; thickness is used only when `geometry.variable_thickness` is `true` |
-| `source,target,material` | default thickness plus per-edge material; use a header row so the third column is identified as material |
-| `source,target,thickness,material` | per-edge thickness and per-edge material |
+| `edge_list_interpretation` | Columns | Meaning |
+| --- | --- | --- |
+| `legacy` | `source,target[,length]` | default thickness, `default_material`; column 3 is ignored |
+| `thickness` | `source,target,thickness` | column 3 controls beam diameter |
+| `material` | `source,target,material_code` | default thickness plus per-edge material |
+| `thickness_material` | `source,target,thickness,material_code` | per-edge thickness and per-edge material |
 
-Headerless three-column edge lists are ambiguous. Numeric third columns
-are treated as thickness when variable thickness is enabled. Text third
-columns are treated as material. A header row is the clearest option for
-teaching examples.
+If `edge_list_interpretation` is omitted, the loader keeps the older
+heuristic behavior for compatibility: numeric third columns are treated
+as thickness only when variable thickness is enabled, and text third
+columns are treated as material.
 
 Node junctions are controlled by `geometry.node_material` and
 `geometry.junction_policy`:

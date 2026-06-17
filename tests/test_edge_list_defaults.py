@@ -3,6 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import numpy as np
 import trimesh
 
 from config_to_stl import generate_from_config_data
@@ -56,6 +57,110 @@ class EdgeListDefaultsTest(unittest.TestCase):
         self.assertEqual([edge.weight for edge in fixed_edges], [1.0, 1.0])
         self.assertEqual([edge.weight for edge in variable_edges], [0.5, 2.0])
         self.assertEqual([edge.material for edge in variable_edges], ["rigid", "rigid"])
+
+    def test_explicit_legacy_edge_list_ignores_third_column(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            edges_path = root / "edges.npy"
+            np.save(edges_path, np.array([
+                [0, 1, 99],
+                [1, 2, 42],
+            ]))
+
+            edges = _load_edges(
+                edges_path,
+                {
+                    "adjacency_format": "edge_list",
+                    "edge_list_interpretation": "legacy",
+                },
+                variable_thickness=True,
+                default_material="rigid",
+                material_lookup={},
+                base_dir=root,
+            )
+
+        self.assertEqual([(edge.weight, edge.material) for edge in edges], [
+            (1.0, "rigid"),
+            (1.0, "rigid"),
+        ])
+
+    def test_explicit_material_code_edge_list_uses_configured_material_map(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            edges_path = root / "edges.npy"
+            np.save(edges_path, np.array([
+                [0, 1, 0],
+                [1, 2, 1],
+                [2, 3, 0],
+            ]))
+
+            edges = _load_edges(
+                edges_path,
+                {
+                    "adjacency_format": "edge_list",
+                    "edge_list_interpretation": "material",
+                    "edge_material_map": {
+                        "0": "material_a",
+                        "1": "material_b",
+                    },
+                },
+                variable_thickness=True,
+                default_material="default",
+                material_lookup={},
+                base_dir=root,
+            )
+
+        self.assertEqual([edge.weight for edge in edges], [1.0, 1.0, 1.0])
+        self.assertEqual([edge.material for edge in edges], ["material_a", "material_b", "material_a"])
+
+    def test_explicit_thickness_material_edge_list_uses_both_columns(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            edges_path = root / "edges.npy"
+            np.save(edges_path, np.array([
+                [0, 1, 0.5, 0],
+                [1, 2, 2.0, 1],
+            ]))
+
+            edges = _load_edges(
+                edges_path,
+                {
+                    "adjacency_format": "edge_list",
+                    "edge_list_interpretation": "thickness_material",
+                    "edge_material_map": {
+                        "0": "soft",
+                        "1": "stiff",
+                    },
+                },
+                variable_thickness=False,
+                default_material="default",
+                material_lookup={},
+                base_dir=root,
+            )
+
+        self.assertEqual([(edge.weight, edge.material) for edge in edges], [
+            (0.5, "soft"),
+            (2.0, "stiff"),
+        ])
+
+    def test_explicit_thickness_edge_list_rejects_material_text_in_third_column(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            edges_path = root / "edges.csv"
+            edges_path.write_text("0,1,soft\n", encoding="utf-8")
+
+            with self.assertRaisesRegex(ValueError, "Invalid edge thickness"):
+                _load_edges(
+                    edges_path,
+                    {
+                        "adjacency_format": "edge_list",
+                        "edge_list_interpretation": "thickness",
+                    },
+                    variable_thickness=False,
+                    default_material="rigid",
+                    material_lookup={},
+                    base_dir=root,
+                )
 
     def test_three_column_material_edge_list_can_omit_thickness_with_header(self):
         with tempfile.TemporaryDirectory() as tmp:

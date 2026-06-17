@@ -298,6 +298,14 @@
               <option value="edge_list">edge_list</option>
             </select>
           </label>
+          <label id="edgeListInterpretationRow">Edge list interpretation
+            <select id="edgeListInterpretation">
+              <option value="legacy">Legacy: source,target[,length]</option>
+              <option value="thickness">Column 3 is thickness</option>
+              <option value="material">Column 3 is material code</option>
+              <option value="thickness_material">Column 3 thickness, column 4 material code</option>
+            </select>
+          </label>
           <label>Material matrix
             <input id="materialMatrix" value="sample_configs/demo_material_matrix.csv">
           </label>
@@ -387,6 +395,23 @@
             <tbody id="materialsBody"></tbody>
           </table>
         </div>
+
+        <div id="edgeMaterialMapSection" class="stack hidden">
+          <div class="section-head" style="height: 36px; padding: 0;">
+            <h2>Edge Material Codes</h2>
+            <button id="addEdgeMaterialMap">Add Code</button>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>Edge value</th>
+                <th>Material</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="edgeMaterialMapBody"></tbody>
+          </table>
+        </div>
       </div>
     </section>
 
@@ -439,7 +464,7 @@
     };
 
     const ids = [
-      "jobName", "outputDir", "positions", "adjacency", "adjacencyFormat",
+      "jobName", "outputDir", "positions", "adjacency", "adjacencyFormat", "edgeListInterpretation",
       "materialMatrix", "edgeMaterials", "defaultMaterial", "beamDiameter",
       "sideLength", "nodeMaterialMode", "junctionPolicy", "nodeMaterial", "mixedJunctionMaterial",
       "variableThickness", "booleanUnion", "configFileName"
@@ -453,6 +478,9 @@
     const nodeMaterialRow = document.getElementById("nodeMaterialRow");
     const junctionPolicyRow = document.getElementById("junctionPolicyRow");
     const mixedJunctionMaterialRow = document.getElementById("mixedJunctionMaterialRow");
+    const edgeListInterpretationRow = document.getElementById("edgeListInterpretationRow");
+    const edgeMaterialMapSection = document.getElementById("edgeMaterialMapSection");
+    const edgeMaterialMapBody = document.getElementById("edgeMaterialMapBody");
 
     function setStatus(text, error = false) {
       status.textContent = text;
@@ -478,12 +506,80 @@
       return String(value).replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("<", "&lt;");
     }
 
-    function materialsObject() {
-      const result = {};
+    function materialEntries() {
+      const entries = [];
       materialsBody.querySelectorAll("tr").forEach(row => {
         const name = row.querySelector(".material-name").value.trim();
         const color = row.querySelector(".material-color").value;
-        if (name) result[name] = { color };
+        if (name) entries.push([name, color]);
+      });
+      return entries;
+    }
+
+    function materialsObject() {
+      return Object.fromEntries(materialEntries().map(([name, color]) => [name, { color }]));
+    }
+
+    function setSelectOptions(select, values, preferred = "") {
+      const previous = select.value;
+      select.innerHTML = "";
+      values.forEach(value => {
+        const option = document.createElement("option");
+        option.value = value;
+        option.textContent = value;
+        select.appendChild(option);
+      });
+      if (previous && values.includes(previous)) {
+        select.value = previous;
+      } else if (preferred && values.includes(preferred)) {
+        select.value = preferred;
+      } else if (values.length) {
+        select.value = values[0];
+      }
+    }
+
+    function usesEdgeMaterialMap() {
+      return ["material", "thickness_material"].includes(el.edgeListInterpretation.value);
+    }
+
+    function addEdgeMaterialMapRow(code = "", material = "") {
+      const row = document.createElement("tr");
+      row.innerHTML = `
+        <td><input class="edge-code" value="${escapeAttr(code)}" aria-label="Edge material code"></td>
+        <td><select class="edge-material" aria-label="Mapped material"></select></td>
+        <td><button class="icon remove-edge-map" title="Remove code" aria-label="Remove code">x</button></td>
+      `;
+      edgeMaterialMapBody.appendChild(row);
+      row.querySelector(".remove-edge-map").addEventListener("click", () => {
+        row.remove();
+        render();
+      });
+      row.querySelector(".edge-code").addEventListener("input", render);
+      row.querySelector(".edge-material").addEventListener("change", render);
+      updateEdgeMaterialMapSelect(row, material);
+    }
+
+    function updateEdgeMaterialMapSelect(row, preferred = "") {
+      setSelectOptions(row.querySelector(".edge-material"), materialEntries().map(([name]) => name), preferred);
+    }
+
+    function updateEdgeMaterialMapSelects() {
+      edgeMaterialMapBody.querySelectorAll("tr").forEach(row => updateEdgeMaterialMapSelect(row));
+    }
+
+    function ensureDefaultEdgeMaterialMapRows() {
+      if (!usesEdgeMaterialMap() || edgeMaterialMapBody.children.length > 0) return;
+      const names = materialEntries().map(([name]) => name);
+      addEdgeMaterialMapRow("0", names[0] || "");
+      addEdgeMaterialMapRow("1", names[1] || names[0] || "");
+    }
+
+    function edgeMaterialMapObject() {
+      const result = {};
+      edgeMaterialMapBody.querySelectorAll("tr").forEach(row => {
+        const code = row.querySelector(".edge-code").value.trim();
+        const material = row.querySelector(".edge-material").value;
+        if (code && material) result[code] = material;
       });
       return result;
     }
@@ -495,14 +591,24 @@
         adjacency: el.adjacency.value.trim(),
         adjacency_format: el.adjacencyFormat.value
       };
-      if (el.materialMatrix.value.trim()) job.material_matrix = el.materialMatrix.value.trim();
+      if (el.adjacencyFormat.value === "edge_list") {
+        job.edge_list_interpretation = el.edgeListInterpretation.value;
+        if (usesEdgeMaterialMap()) {
+          job.edge_material_map = edgeMaterialMapObject();
+        }
+      }
+      if (el.adjacencyFormat.value !== "edge_list" && el.materialMatrix.value.trim()) {
+        job.material_matrix = el.materialMatrix.value.trim();
+      }
       if (el.edgeMaterials.value.trim()) job.edge_materials = el.edgeMaterials.value.trim();
 
       const fixedNodeMaterial = el.nodeMaterialMode.value === "fixed";
       const geometry = {
         beam_diameter_mm: Number(el.beamDiameter.value),
         cube_side_length_mm: Number(el.sideLength.value),
-        variable_thickness: el.variableThickness.checked,
+        variable_thickness: el.adjacencyFormat.value === "edge_list"
+          ? ["thickness", "thickness_material"].includes(el.edgeListInterpretation.value)
+          : el.variableThickness.checked,
         boolean_union: el.booleanUnion.checked
       };
       if (fixedNodeMaterial) {
@@ -524,7 +630,13 @@
     }
 
     function render() {
+      updateEdgeMaterialMapSelects();
+      ensureDefaultEdgeMaterialMapRows();
+      const isEdgeList = el.adjacencyFormat.value === "edge_list";
       const fixedNodeMaterial = el.nodeMaterialMode.value === "fixed";
+      edgeListInterpretationRow.classList.toggle("hidden", !isEdgeList);
+      edgeMaterialMapSection.classList.toggle("hidden", !isEdgeList || !usesEdgeMaterialMap());
+      el.variableThickness.disabled = isEdgeList;
       nodeMaterialRow.classList.toggle("hidden", !fixedNodeMaterial);
       junctionPolicyRow.classList.toggle("hidden", fixedNodeMaterial);
       mixedJunctionMaterialRow.classList.toggle("hidden", fixedNodeMaterial || el.junctionPolicy.value !== "separate");
@@ -542,6 +654,9 @@
       if (!(config.geometry.beam_diameter_mm > 0)) errors.push("Beam diameter must be greater than zero.");
       if (!(config.geometry.cube_side_length_mm > 0)) errors.push("Side length must be greater than zero.");
       if (Object.keys(config.materials).length === 0) errors.push("At least one material is required.");
+      if (config.jobs[0].adjacency_format === "edge_list" && usesEdgeMaterialMap() && Object.keys(edgeMaterialMapObject()).length === 0) {
+        errors.push("Add at least one edge material code mapping.");
+      }
       if (errors.length) setStatus(errors.join(" "), true);
       else setStatus("Ready");
     }
@@ -554,6 +669,7 @@
       el.positions.value = job.positions || job.xy || "";
       el.adjacency.value = job.adjacency || job.adj || "";
       el.adjacencyFormat.value = job.adjacency_format || "auto";
+      el.edgeListInterpretation.value = inferEdgeListInterpretation(job, geometry);
       el.materialMatrix.value = job.material_matrix || job.materials_matrix || "";
       el.edgeMaterials.value = job.edge_materials || "";
       el.defaultMaterial.value = job.default_material || config.default_material || "default";
@@ -574,7 +690,23 @@
         ? Object.entries(materials).map(([name, value]) => [name, (value && value.color) || "#2563eb"])
         : defaults.materials;
       entries.forEach(([name, color]) => addMaterialRow(name, color));
+      edgeMaterialMapBody.innerHTML = "";
+      const edgeMaterialMap = job.edge_material_map || job.material_code_map || {};
+      Object.entries(edgeMaterialMap).forEach(([code, material]) => addEdgeMaterialMapRow(code, material));
       render();
+    }
+
+    function inferEdgeListInterpretation(job, geometry) {
+      if (job.edge_list_interpretation || job.edge_interpretation) {
+        return job.edge_list_interpretation || job.edge_interpretation;
+      }
+      const columns = job.edge_columns || {};
+      const hasMaterial = columns.material !== undefined;
+      const hasThickness = columns.thickness !== undefined || columns.weight !== undefined;
+      if (hasMaterial && hasThickness) return "thickness_material";
+      if (hasMaterial) return "material";
+      if (hasThickness || geometry.variable_thickness) return "thickness";
+      return "legacy";
     }
 
     function downloadConfig() {
@@ -594,6 +726,10 @@
 
     document.getElementById("addMaterial").addEventListener("click", () => {
       addMaterialRow("material", "#2563eb");
+      render();
+    });
+    document.getElementById("addEdgeMaterialMap").addEventListener("click", () => {
+      addEdgeMaterialMapRow("", materialEntries()[0]?.[0] || "");
       render();
     });
     document.getElementById("download").addEventListener("click", downloadConfig);
