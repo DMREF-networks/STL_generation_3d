@@ -1,6 +1,7 @@
 import pickle
 import tempfile
 import unittest
+from unittest import mock
 from collections import defaultdict
 from pathlib import Path
 
@@ -9,6 +10,8 @@ import trimesh
 
 from config_to_stl import generate_from_config_data
 from config_to_stl import _add_junction_spheres
+from config_to_stl import _combine_meshes
+from config_to_stl import _create_beam
 from config_to_stl import _load_edges
 from config_to_stl import _load_node_diameters
 
@@ -321,6 +324,7 @@ class EdgeListDefaultsTest(unittest.TestCase):
             },
             meshes_by_material,
             beam_diameter=10.0,
+            beam_cross_section="circular",
             junction_policy="separate",
             mixed_junction_material="mixed",
             node_material="node",
@@ -332,6 +336,49 @@ class EdgeListDefaultsTest(unittest.TestCase):
         self.assertEqual(sorted(reservations), [0, 1])
         self.assertAlmostEqual(reservations[0].radius, 0.2)
         self.assertAlmostEqual(reservations[1].radius, 0.4)
+
+    def test_square_beam_cross_section_uses_square_prism(self):
+        beam = _create_beam(
+            np.array([0.0, 0.0, 0.0]),
+            np.array([0.0, 0.0, 2.0]),
+            beam_diameter=0.5,
+            sections=16,
+            cross_section="square",
+        )
+
+        self.assertIsNotNone(beam)
+        self.assertTrue(beam.is_watertight)
+        self.assertTrue(beam.is_volume)
+        np.testing.assert_allclose(beam.extents, [0.5, 0.5, 2.0], atol=1e-9)
+        self.assertAlmostEqual(beam.volume, 0.5, places=9)
+
+    def test_boolean_union_failure_falls_back_to_concatenation(self):
+        beam_a = _create_beam(
+            np.array([0.0, 0.0, 0.0]),
+            np.array([1.0, 0.0, 0.0]),
+            beam_diameter=0.1,
+            sections=8,
+        )
+        beam_b = _create_beam(
+            np.array([0.5, 0.0, 0.0]),
+            np.array([1.5, 0.0, 0.0]),
+            beam_diameter=0.1,
+            sections=8,
+        )
+        warnings = []
+
+        with mock.patch("trimesh.boolean.union", side_effect=ValueError("Not all meshes are volumes!")):
+            combined = _combine_meshes(
+                [beam_a, beam_b],
+                boolean_union=True,
+                material="beam",
+                warnings=warnings,
+            )
+
+        self.assertIsNotNone(combined)
+        self.assertFalse(combined.is_empty)
+        self.assertTrue(warnings)
+        self.assertIn("Not all meshes are volumes", warnings[0])
 
     def test_per_material_junction_policy_is_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -28,6 +28,7 @@ from typing import Any, Dict, Iterable, List, Mapping, Optional, Tuple
 
 import numpy as np
 import trimesh
+from trimesh.creation import box as mesh_box
 from trimesh.creation import cylinder, icosphere
 
 
@@ -131,6 +132,7 @@ def _generate_job(
 
     name = str(job.get("name") or _default_job_name(adjacency_path))
     beam_diameter = float(geometry.get("beam_diameter_mm", geometry.get("beam_diameter", 1.0)))
+    beam_cross_section = _beam_cross_section(geometry)
     cube_side = float(geometry.get("cube_side_length_mm", geometry.get("cube_side_length", 1.0)))
     variable_thickness = bool(geometry.get("variable_thickness", False))
     adjacency_format = str(job.get("adjacency_format", "auto")).strip().lower().replace("-", "_")
@@ -195,7 +197,7 @@ def _generate_job(
         diameter = beam_diameter * edge.weight
         if diameter <= 0:
             continue
-        beam = _create_beam(start, end, diameter, sections=sections)
+        beam = _create_beam(start, end, diameter, sections=sections, cross_section=beam_cross_section)
         if beam is None:
             continue
         meshes_by_material[edge.material].append(beam)
@@ -209,6 +211,7 @@ def _generate_job(
         incident,
         meshes_by_material,
         beam_diameter,
+        beam_cross_section=beam_cross_section,
         junction_policy=junction_policy,
         mixed_junction_material=mixed_junction_material,
         node_material=node_material,
@@ -219,6 +222,7 @@ def _generate_job(
 
     outputs = []
     combined_for_preview: Dict[str, trimesh.Trimesh] = {}
+    warnings: List[str] = []
     for material in sorted(meshes_by_material):
         meshes = meshes_by_material[material]
         if node_material_priority and node_reservations and material != node_material:
@@ -228,11 +232,17 @@ def _generate_job(
                 positions,
                 node_reservations,
                 sections,
+                beam_cross_section,
             )
         if not meshes:
             continue
         material_boolean_union = boolean_union and material != node_material
-        combined = _combine_meshes(meshes, boolean_union=material_boolean_union)
+        combined = _combine_meshes(
+            meshes,
+            boolean_union=material_boolean_union,
+            material=material,
+            warnings=warnings,
+        )
         if combined is None or combined.is_empty:
             continue
         filename = f"{_slug(name)}_{_slug(material)}.stl"
@@ -258,8 +268,10 @@ def _generate_job(
         "material_count": len(outputs),
         "outputs": outputs,
         "preview": preview_result,
+        "warnings": warnings,
         "geometry": {
             "beam_diameter_mm": beam_diameter,
+            "beam_cross_section": beam_cross_section,
             "cube_side_length_mm": cube_side,
             "variable_thickness": variable_thickness,
             "junction_policy": junction_policy,
@@ -740,27 +752,67 @@ def _normalize_positions(positions: np.ndarray, cube_side_length: float) -> np.n
     return (positions - min_coords) * (cube_side_length / max_span)
 
 
-def _create_beam(start_point: np.ndarray, end_point: np.ndarray, beam_diameter: float, sections: int) -> Optional[trimesh.Trimesh]:
+def _beam_cross_section(geometry: Mapping[str, Any]) -> str:
+    value = geometry.get("beam_cross_section", geometry.get("cross_section", "circular"))
+    normalized = str(value).strip().lower().replace("-", "_").replace(" ", "_")
+    aliases = {
+        "circle": "circular",
+        "round": "circular",
+        "cylinder": "circular",
+        "rectangular": "square",
+        "box": "square",
+        "prism": "square",
+    }
+    normalized = aliases.get(normalized, normalized)
+    if normalized not in {"circular", "square"}:
+        raise ValueError("geometry.beam_cross_section must be one of: circular, square.")
+    return normalized
+
+
+def _cross_section_enclosing_radius(size: float, cross_section: str) -> float:
+    radius = float(size) / 2.0
+    if cross_section == "square":
+        return radius * math.sqrt(2.0)
+    return radius
+
+
+def _apply_z_axis_alignment(
+    mesh: trimesh.Trimesh,
+    direction: np.ndarray,
+    point: Iterable[float],
+) -> None:
+    z_vector = np.array([0.0, 0.0, 1.0])
+    axis = np.cross(z_vector, direction)
+    axis_length = float(np.linalg.norm(axis))
+    if axis_length < 1e-12:
+        if float(np.dot(z_vector, direction)) < 0:
+            mesh.apply_transform(trimesh.transformations.rotation_matrix(math.pi, [0, 1, 0], point=point))
+    else:
+        axis = axis / axis_length
+        angle = math.acos(float(np.clip(np.dot(z_vector, direction), -1.0, 1.0)))
+        mesh.apply_transform(trimesh.transformations.rotation_matrix(angle, axis, point=point))
+
+
+def _create_beam(
+    start_point: np.ndarray,
+    end_point: np.ndarray,
+    beam_diameter: float,
+    sections: int,
+    cross_section: str = "circular",
+) -> Optional[trimesh.Trimesh]:
     vector = np.asarray(end_point, dtype=float) - np.asarray(start_point, dtype=float)
     length = float(np.linalg.norm(vector))
     if length < 1e-12:
         return None
     direction = vector / length
 
-    beam = cylinder(radius=beam_diameter / 2.0, height=length, sections=sections)
+    if cross_section == "square":
+        beam = mesh_box(extents=[beam_diameter, beam_diameter, length])
+    else:
+        beam = cylinder(radius=beam_diameter / 2.0, height=length, sections=sections)
     beam.apply_translation(-beam.centroid)
 
-    z_vector = np.array([0.0, 0.0, 1.0])
-    axis = np.cross(z_vector, direction)
-    axis_length = float(np.linalg.norm(axis))
-    if axis_length < 1e-12:
-        if float(np.dot(z_vector, direction)) < 0:
-            beam.apply_transform(trimesh.transformations.rotation_matrix(math.pi, [0, 1, 0], point=beam.centroid))
-    else:
-        axis = axis / axis_length
-        angle = math.acos(float(np.clip(np.dot(z_vector, direction), -1.0, 1.0)))
-        beam.apply_transform(trimesh.transformations.rotation_matrix(angle, axis, point=beam.centroid))
-
+    _apply_z_axis_alignment(beam, direction, beam.centroid)
     beam.apply_translation((np.asarray(start_point, dtype=float) + np.asarray(end_point, dtype=float)) / 2.0)
     return beam
 
@@ -770,6 +822,7 @@ def _add_junction_spheres(
     incident: Mapping[int, List[Tuple[str, float]]],
     meshes_by_material: Dict[str, List[trimesh.Trimesh]],
     beam_diameter: float,
+    beam_cross_section: str,
     junction_policy: str,
     mixed_junction_material: str,
     node_material: Optional[str],
@@ -783,7 +836,7 @@ def _add_junction_spheres(
             continue
         max_weight = max(weight for _, weight in material_weights)
         if node_diameters is None:
-            radius = beam_diameter / 2.0 * max_weight * node_radius_scale
+            radius = _cross_section_enclosing_radius(beam_diameter * max_weight, beam_cross_section) * node_radius_scale
         else:
             radius = float(node_diameters[idx]) / 2.0
         if radius <= 0:
@@ -815,6 +868,7 @@ def _apply_node_material_priority(
     positions: np.ndarray,
     node_reservations: Mapping[int, NodeReservation],
     sections: int,
+    beam_cross_section: str,
 ) -> List[trimesh.Trimesh]:
     if not beam_records:
         return meshes
@@ -834,6 +888,7 @@ def _apply_node_material_priority(
             source_reservation.radius,
             target_reservation.radius,
             sections=sections,
+            cross_section=beam_cross_section,
         )
         if cut_mesh is not None and not cut_mesh.is_empty:
             protected.append(cut_mesh)
@@ -848,12 +903,23 @@ def _create_node_cut_beam(
     source_radius: float,
     target_radius: float,
     sections: int,
+    cross_section: str = "circular",
 ) -> Optional[trimesh.Trimesh]:
     vector = np.asarray(end_point, dtype=float) - np.asarray(start_point, dtype=float)
     length = float(np.linalg.norm(vector))
     if length < 1e-12:
         return None
     direction = vector / length
+    if cross_section == "square":
+        return _create_node_cut_square_beam(
+            start_point,
+            direction,
+            length,
+            beam_diameter,
+            source_radius,
+            target_radius,
+        )
+
     radius = beam_diameter / 2.0
     source_radius = max(float(source_radius), radius)
     target_radius = max(float(target_radius), radius)
@@ -920,22 +986,43 @@ def _create_node_cut_beam(
     add_center_fan(target_center, previous_ring, reverse=False)
 
     mesh = trimesh.Trimesh(vertices=np.asarray(vertices), faces=np.asarray(faces), process=False)
-    z_vector = np.array([0.0, 0.0, 1.0])
-    axis = np.cross(z_vector, direction)
-    axis_length = float(np.linalg.norm(axis))
-    if axis_length < 1e-12:
-        if float(np.dot(z_vector, direction)) < 0:
-            mesh.apply_transform(trimesh.transformations.rotation_matrix(math.pi, [0, 1, 0], point=[0, 0, 0]))
-    else:
-        axis = axis / axis_length
-        angle = math.acos(float(np.clip(np.dot(z_vector, direction), -1.0, 1.0)))
-        mesh.apply_transform(trimesh.transformations.rotation_matrix(angle, axis, point=[0, 0, 0]))
+    _apply_z_axis_alignment(mesh, direction, [0, 0, 0])
     mesh.apply_translation(np.asarray(start_point, dtype=float))
     mesh.merge_vertices()
     return mesh
 
 
-def _combine_meshes(meshes: List[trimesh.Trimesh], boolean_union: bool) -> Optional[trimesh.Trimesh]:
+def _create_node_cut_square_beam(
+    start_point: np.ndarray,
+    direction: np.ndarray,
+    length: float,
+    beam_side: float,
+    source_radius: float,
+    target_radius: float,
+) -> Optional[trimesh.Trimesh]:
+    enclosing_radius = _cross_section_enclosing_radius(beam_side, "square")
+    source_radius = max(float(source_radius), enclosing_radius)
+    target_radius = max(float(target_radius), enclosing_radius)
+    source_offset = math.sqrt(max(source_radius * source_radius - enclosing_radius * enclosing_radius, 0.0))
+    target_offset = math.sqrt(max(target_radius * target_radius - enclosing_radius * enclosing_radius, 0.0))
+    cut_length = length - source_offset - target_offset
+    if cut_length <= 1e-12:
+        return None
+
+    mesh = mesh_box(extents=[beam_side, beam_side, cut_length])
+    mesh.apply_translation([0.0, 0.0, source_offset + cut_length / 2.0])
+    _apply_z_axis_alignment(mesh, direction, [0, 0, 0])
+    mesh.apply_translation(np.asarray(start_point, dtype=float))
+    mesh.merge_vertices()
+    return mesh
+
+
+def _combine_meshes(
+    meshes: List[trimesh.Trimesh],
+    boolean_union: bool,
+    material: Optional[str] = None,
+    warnings: Optional[List[str]] = None,
+) -> Optional[trimesh.Trimesh]:
     if not meshes:
         return None
     if boolean_union:
@@ -945,7 +1032,15 @@ def _combine_meshes(meshes: List[trimesh.Trimesh], boolean_union: bool) -> Optio
         if len(prepared) == 1:
             mesh = prepared[0]
         else:
-            mesh = trimesh.boolean.union(prepared)
+            try:
+                mesh = trimesh.boolean.union(prepared, check_volume=False)
+            except Exception as exc:
+                label = f" for material '{material}'" if material else ""
+                if warnings is not None:
+                    warnings.append(
+                        f"Boolean union{label} failed ({exc}); exported repaired unmerged meshes instead."
+                    )
+                mesh = trimesh.util.concatenate(prepared)
     elif len(meshes) == 1:
         mesh = meshes[0].copy()
     else:

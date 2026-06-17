@@ -501,7 +501,13 @@ PAGE = """<!doctype html>
           <label id="mixedJunctionMaterialRow">Mixed-node material
             <select id="mixedJunctionMaterial"></select>
           </label>
-          <label>Beam diameter mm
+          <label>Beam cross-section
+            <select id="beamCrossSection">
+              <option value="circular">Circular</option>
+              <option value="square">Square</option>
+            </select>
+          </label>
+          <label>Beam size mm
             <input id="beamDiameter" type="number" step="0.001" min="0" value="0.25">
           </label>
           <label>Side length mm
@@ -586,7 +592,7 @@ PAGE = """<!doctype html>
       "configPath", "jobName", "outputDir", "positions", "nodeDiameters", "adjacency",
       "adjacencyFormat", "edgeListInterpretation", "materialMode", "materialMatrix", "edgeMaterials",
       "defaultMaterial", "nodeMaterialMode", "nodeMaterial", "mixedJunctionMaterial",
-      "junctionPolicy", "beamDiameter", "sideLength", "variableThickness",
+      "junctionPolicy", "beamCrossSection", "beamDiameter", "sideLength", "variableThickness",
       "booleanUnion", "configJson"
     ];
     const el = Object.fromEntries(ids.map(id => [id, document.getElementById(id)]));
@@ -774,6 +780,7 @@ PAGE = """<!doctype html>
       const fallbackMaterial = el.defaultMaterial.value || materialEntries()[0]?.[0] || "default";
       const geometry = {
         beam_diameter_mm: Number(el.beamDiameter.value),
+        beam_cross_section: el.beamCrossSection.value,
         cube_side_length_mm: Number(el.sideLength.value),
         variable_thickness: el.adjacencyFormat.value === "edge_list"
           ? ["thickness", "thickness_material"].includes(el.edgeListInterpretation.value)
@@ -825,7 +832,7 @@ PAGE = """<!doctype html>
       const errors = [];
       if (!job.positions) errors.push("Node positions file is required.");
       if (!job.adjacency) errors.push("Adjacency or edge-list file is required.");
-      if (!(config.geometry.beam_diameter_mm > 0)) errors.push("Beam diameter must be greater than zero.");
+      if (!(config.geometry.beam_diameter_mm > 0)) errors.push("Beam size must be greater than zero.");
       if (!(config.geometry.cube_side_length_mm > 0)) errors.push("Side length must be greater than zero.");
       if (Object.keys(config.materials).length === 0) errors.push("At least one material is required.");
       if (config.jobs[0].adjacency_format === "edge_list" && el.materialMode.value === "matrix") {
@@ -884,6 +891,9 @@ PAGE = """<!doctype html>
         : job.edge_materials
           ? "edge_table"
           : "default";
+      el.beamCrossSection.value = ["circular", "square"].includes(geometry.beam_cross_section || geometry.cross_section)
+        ? (geometry.beam_cross_section || geometry.cross_section)
+        : "circular";
       el.beamDiameter.value = geometry.beam_diameter_mm || geometry.beam_diameter || 1;
       el.sideLength.value = geometry.cube_side_length_mm || geometry.cube_side_length || 1;
       el.nodeMaterialMode.value = geometry.node_material ? "fixed" : "auto";
@@ -949,12 +959,16 @@ PAGE = """<!doctype html>
         const preview = job.preview && job.preview.path
           ? `<p>${fileLink(job.preview.path, "Open material preview")}</p>`
           : "";
+        const warnings = (job.warnings || []).length
+          ? `<div class="status" style="color: #92400e; border-color: #f59e0b;">${(job.warnings || []).map(escapeHtml).join("<br>")}</div>`
+          : "";
         return `
           <div class="summary">
             <div class="metric"><strong>${escapeHtml(job.edge_count)}</strong><span>Edges</span></div>
             <div class="metric"><strong>${escapeHtml(job.material_count)}</strong><span>STL files</span></div>
             <div class="metric"><strong>${escapeHtml(job.name)}</strong><span>Job</span></div>
           </div>
+          ${warnings}
           <table>
             <thead><tr><th>Material</th><th>Faces</th><th>Watertight</th><th>File</th></tr></thead>
             <tbody>${rows}</tbody>
