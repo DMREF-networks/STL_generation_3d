@@ -9,6 +9,7 @@ __pycache__/
 csvFiles/
 local_configs/
 local_output/
+local_uploads/
 output.txt
 sample_configs/random_edge_material_demo/
 *.html

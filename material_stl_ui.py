@@ -7,21 +7,25 @@ the local filesystem reads/writes and calls the STL generation code.
 from __future__ import annotations
 
 import argparse
+import cgi
 import json
 import mimetypes
 import re
+import shutil
+import subprocess
 import traceback
 import webbrowser
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any, Dict, Iterable, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 from urllib.parse import parse_qs, urlparse
 
 from config_to_stl import generate_from_config_data
 
 
 DEFAULT_CONFIG_PATH = Path("sample_configs/multimaterial_test.json")
+UPLOAD_ROOT = Path("local_uploads/material_stl_ui")
 
 
 PAGE = """<!doctype html>
@@ -367,6 +371,7 @@ PAGE = """<!doctype html>
     }
     .full { grid-column: 1 / -1; }
     .hidden { display: none; }
+    .native-upload { display: none; }
     @media (max-width: 1020px) {
       header { align-items: stretch; flex-direction: column; }
       main { grid-template-columns: 1fr; }
@@ -392,6 +397,7 @@ PAGE = """<!doctype html>
         <h2>Configuration</h2>
         <div class="row">
           <button id="openConfig">Load Config</button>
+          <input id="configUpload" class="native-upload" type="file" accept=".json">
         </div>
       </div>
       <div class="content stack">
@@ -411,19 +417,22 @@ PAGE = """<!doctype html>
             <label>Node positions file
               <input id="positions" value="demo_xy.csv">
             </label>
-            <button class="browse" data-target="positions" data-kind="positions">Choose</button>
+            <button class="upload" data-target="positions" data-kind="positions">Upload</button>
+            <input class="native-upload" type="file" data-target="positions" data-kind="positions" accept=".csv,.npy,.pkl,.pickle">
           </div>
           <div class="field-row">
             <label>Node diameters file
               <input id="nodeDiameters" placeholder="optional .npy/.csv/.pkl path">
             </label>
-            <button class="browse" data-target="nodeDiameters" data-kind="node_diameters">Choose</button>
+            <button class="upload" data-target="nodeDiameters" data-kind="node_diameters">Upload</button>
+            <input class="native-upload" type="file" data-target="nodeDiameters" data-kind="node_diameters" accept=".csv,.npy,.pkl,.pickle">
           </div>
           <div class="field-row">
             <label>Adjacency or edge-list file
               <input id="adjacency" value="demo_adj.csv">
             </label>
-            <button class="browse" data-target="adjacency" data-kind="adjacency">Choose</button>
+            <button class="upload" data-target="adjacency" data-kind="adjacency">Upload</button>
+            <input class="native-upload" type="file" data-target="adjacency" data-kind="adjacency" accept=".csv,.npy,.pkl,.pickle">
           </div>
           <label>Connectivity format
             <select id="adjacencyFormat">
@@ -451,13 +460,15 @@ PAGE = """<!doctype html>
             <label>Material matrix file
               <input id="materialMatrix" value="demo_material_matrix.csv">
             </label>
-            <button class="browse" data-target="materialMatrix" data-kind="material_matrix">Choose</button>
+            <button class="upload" data-target="materialMatrix" data-kind="material_matrix">Upload</button>
+            <input class="native-upload" type="file" data-target="materialMatrix" data-kind="material_matrix" accept=".csv,.npy,.pkl,.pickle">
           </div>
           <div id="edgeMaterialsRow" class="field-row hidden">
             <label>Edge-material table
               <input id="edgeMaterials" placeholder="optional CSV path">
             </label>
-            <button class="browse" data-target="edgeMaterials" data-kind="edge_materials">Choose</button>
+            <button class="upload" data-target="edgeMaterials" data-kind="edge_materials">Upload</button>
+            <input class="native-upload" type="file" data-target="edgeMaterials" data-kind="edge_materials" accept=".csv">
           </div>
         </div>
 
@@ -592,7 +603,7 @@ PAGE = """<!doctype html>
 
   <script>
     const ids = [
-      "configPath", "jobName", "outputDir", "positions", "nodeDiameters", "adjacency",
+      "configPath", "configUpload", "jobName", "outputDir", "positions", "nodeDiameters", "adjacency",
       "adjacencyFormat", "edgeListInterpretation", "materialMode", "materialMatrix", "edgeMaterials",
       "defaultMaterial", "nodeMaterialMode", "nodeMaterial", "mixedJunctionMaterial",
       "junctionPolicy", "beamCrossSection", "beamDiameter", "extrusionHeight", "sideLength", "variableThickness",
@@ -651,6 +662,21 @@ PAGE = """<!doctype html>
         method: "POST",
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify(body || {})
+      });
+      const payload = await response.json();
+      if (!response.ok || payload.error) {
+        throw new Error(payload.error || response.statusText);
+      }
+      return payload;
+    }
+
+    async function uploadFile(file, kind) {
+      const body = new FormData();
+      body.append("kind", kind);
+      body.append("file", file);
+      const response = await fetch("/upload-file", {
+        method: "POST",
+        body
       });
       const payload = await response.json();
       if (!response.ok || payload.error) {
@@ -1013,14 +1039,21 @@ PAGE = """<!doctype html>
       return payload.path;
     }
 
-    document.getElementById("openConfig").addEventListener("click", async () => {
+    document.getElementById("openConfig").addEventListener("click", () => {
+      el.configUpload.click();
+    });
+    el.configUpload.addEventListener("change", async () => {
+      const file = el.configUpload.files && el.configUpload.files[0];
+      if (!file) return;
       setBusy(true);
       try {
-        const path = await chooseFile("configPath", "config");
-        await loadConfig(path);
+        setStatus("Uploading config...");
+        const payload = await uploadFile(file, "config");
+        await loadConfig(payload.path);
       } catch (error) {
         setStatus(error.message, true);
       } finally {
+        el.configUpload.value = "";
         setBusy(false);
       }
     });
@@ -1072,14 +1105,28 @@ PAGE = """<!doctype html>
       setStatus("JSON refreshed from form");
     });
 
-    document.querySelectorAll(".browse").forEach(button => {
-      button.addEventListener("click", async () => {
+    document.querySelectorAll(".upload").forEach(button => {
+      button.addEventListener("click", () => {
+        const input = document.querySelector(`.native-upload[data-target="${button.dataset.target}"][data-kind="${button.dataset.kind}"]`);
+        if (input) input.click();
+      });
+    });
+
+    document.querySelectorAll(".native-upload[data-target]").forEach(input => {
+      input.addEventListener("change", async () => {
+        const file = input.files && input.files[0];
+        if (!file) return;
         setBusy(true);
         try {
-          await chooseFile(button.dataset.target, button.dataset.kind);
+          setStatus(`Uploading ${file.name}...`);
+          const payload = await uploadFile(file, input.dataset.kind);
+          el[input.dataset.target].value = payload.path;
+          render({ forceJson: true });
+          setStatus(`Uploaded ${file.name}`);
         } catch (error) {
           setStatus(error.message, true);
         } finally {
+          input.value = "";
           setBusy(false);
         }
       });
@@ -1139,6 +1186,9 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         try:
             parsed = urlparse(self.path)
+            if parsed.path == "/upload-file":
+                self._upload_file()
+                return
             payload = self._read_json()
             if parsed.path == "/load":
                 self._load(payload)
@@ -1210,6 +1260,43 @@ class Handler(BaseHTTPRequestHandler):
         path = _pick_path(mode="directory", kind="directory", initial=payload.get("initial"))
         self._send_json({"path": path})
 
+    def _upload_file(self) -> None:
+        content_type = self.headers.get("Content-Type", "")
+        if not content_type.lower().startswith("multipart/form-data"):
+            raise ValueError("Upload must use multipart/form-data.")
+
+        form = cgi.FieldStorage(
+            fp=self.rfile,
+            headers=self.headers,
+            environ={
+                "REQUEST_METHOD": "POST",
+                "CONTENT_TYPE": content_type,
+                "CONTENT_LENGTH": self.headers.get("Content-Length", "0"),
+            },
+        )
+        if "file" not in form:
+            raise ValueError("Upload did not include a file.")
+        file_item = form["file"]
+        if isinstance(file_item, list):
+            file_item = file_item[0]
+        filename = getattr(file_item, "filename", "")
+        if not filename:
+            raise ValueError("Upload did not include a filename.")
+
+        kind = _safe_upload_kind(form.getfirst("kind", "file"))
+        upload_dir = (Path.cwd() / UPLOAD_ROOT / kind).resolve()
+        upload_dir.mkdir(parents=True, exist_ok=True)
+        output_path = _next_upload_path(upload_dir, _safe_upload_filename(filename))
+
+        with output_path.open("wb") as f:
+            shutil.copyfileobj(file_item.file, f)
+
+        self._send_json({
+            "path": str(output_path),
+            "filename": Path(filename).name,
+            "kind": kind,
+        })
+
     def _read_json(self) -> Dict[str, Any]:
         length = int(self.headers.get("Content-Length", "0"))
         raw = self.rfile.read(length).decode("utf-8")
@@ -1265,14 +1352,101 @@ def _resolve_path(value: Any) -> Path:
     return path.resolve()
 
 
+def _safe_upload_kind(value: Any) -> str:
+    kind = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(value or "file")).strip("._")
+    return kind or "file"
+
+
+def _safe_upload_filename(value: Any) -> str:
+    filename = Path(str(value)).name
+    filename = re.sub(r"[^A-Za-z0-9_.-]+", "_", filename).strip("._")
+    if not filename:
+        raise ValueError("Uploaded filename is empty.")
+    return filename
+
+
+def _next_upload_path(directory: Path, filename: str) -> Path:
+    candidate = directory / filename
+    if not candidate.exists():
+        return candidate
+    stem = candidate.stem
+    suffix = candidate.suffix
+    for index in range(2, 10000):
+        next_candidate = directory / f"{stem}_{index}{suffix}"
+        if not next_candidate.exists():
+            return next_candidate
+    raise ValueError(f"Could not choose an upload filename for {filename}.")
+
+
 def _pick_path(mode: str, kind: str, initial: Any = None) -> str:
+    initial_path = _initial_dialog_path(initial)
+    selected = _pick_path_zenity(mode, kind, initial_path)
+    if selected:
+        return selected
+    return _pick_path_tk(mode, kind, initial_path)
+
+
+def _pick_path_zenity(mode: str, kind: str, initial_path: Tuple[Path, str]) -> Optional[str]:
+    zenity = shutil.which("zenity")
+    if not zenity:
+        return None
+
+    initial_dir, initial_file = initial_path
+    title = "Save config JSON" if mode == "save" else "Choose output folder" if mode == "directory" else _dialog_title(kind)
+    if initial_file:
+        filename = str(initial_dir / initial_file)
+    elif mode == "directory":
+        filename = str(initial_dir)
+    else:
+        filename = str(initial_dir) + "/"
+
+    command = [
+        zenity,
+        "--file-selection",
+        f"--title={title}",
+        f"--filename={filename}",
+    ]
+    if mode == "save":
+        command.extend(["--save", "--confirm-overwrite"])
+    elif mode == "directory":
+        command.append("--directory")
+    elif mode != "open":
+        raise ValueError(f"Unknown picker mode: {mode}")
+
+    if mode != "directory":
+        command.extend(_zenity_file_filters(kind))
+
+    try:
+        result = subprocess.run(
+            command,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+    except OSError:
+        return None
+
+    if result.returncode == 0:
+        selected = result.stdout.strip().splitlines()[0] if result.stdout.strip() else ""
+        if not selected:
+            raise ValueError("No file selected.")
+        return str(Path(selected).expanduser().resolve())
+
+    stderr = result.stderr.strip().lower()
+    if result.returncode == 1 and not stderr:
+        raise ValueError("No file selected.")
+    if "cannot open display" in stderr or "no protocol specified" in stderr:
+        return None
+    return None
+
+
+def _pick_path_tk(mode: str, kind: str, initial_path: Tuple[Path, str]) -> str:
     try:
         import tkinter as tk
         from tkinter import filedialog
     except ImportError as exc:
         raise ValueError("The Browse buttons require tkinter. Paste the path into the field instead.") from exc
 
-    initial_path = _initial_dialog_path(initial)
     try:
         root = tk.Tk()
     except tk.TclError as exc:
@@ -1315,6 +1489,10 @@ def _pick_path(mode: str, kind: str, initial: Any = None) -> str:
     if not selected:
         raise ValueError("No file selected.")
     return str(Path(selected).expanduser().resolve())
+
+
+def _zenity_file_filters(kind: str) -> List[str]:
+    return [f"--file-filter={label} | {patterns}" for label, patterns in _dialog_filetypes(kind)]
 
 
 def _initial_dialog_path(value: Any) -> Tuple[Path, str]:
