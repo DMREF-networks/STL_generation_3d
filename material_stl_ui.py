@@ -472,7 +472,7 @@ PAGE = """<!doctype html>
                 class="tooltip"
                 tabindex="0"
                 aria-label="Node material mode help"
-                data-tooltip="Choose whether every node sphere uses one dedicated material, or node spheres are assigned from the beam materials that touch them. A dedicated node material is usually clearest for multi-material prints."
+                data-tooltip="Choose whether every node uses one dedicated material, or nodes are assigned from the beam materials that touch them. A dedicated node material is usually clearest for multi-material prints."
               >?</span>
             </span>
             <select id="nodeMaterialMode">
@@ -510,6 +510,9 @@ PAGE = """<!doctype html>
           <label>Beam size mm
             <input id="beamDiameter" type="number" step="0.001" min="0" value="0.25">
           </label>
+          <label id="extrusionHeightRow">Extrusion height mm
+            <input id="extrusionHeight" type="number" step="0.001" min="0" value="0.25">
+          </label>
           <label>Side length mm
             <input id="sideLength" type="number" step="0.001" min="0" value="30">
           </label>
@@ -520,7 +523,7 @@ PAGE = """<!doctype html>
               class="tooltip"
               tabindex="0"
               aria-label="Adjacency or thickness values help"
-              data-tooltip="When on, adjacency matrix values or edge-list thickness/weight columns scale beam diameter. When off, nonzero values only mean an edge exists and all beams use the base diameter."
+              data-tooltip="When on, adjacency matrix values or edge-list thickness/weight columns scale beam diameter for circular beams or XY beam width for square beams. When off, nonzero values only mean an edge exists and all beams use the base size."
             >?</span>
           </label>
           <label class="check">
@@ -592,7 +595,7 @@ PAGE = """<!doctype html>
       "configPath", "jobName", "outputDir", "positions", "nodeDiameters", "adjacency",
       "adjacencyFormat", "edgeListInterpretation", "materialMode", "materialMatrix", "edgeMaterials",
       "defaultMaterial", "nodeMaterialMode", "nodeMaterial", "mixedJunctionMaterial",
-      "junctionPolicy", "beamCrossSection", "beamDiameter", "sideLength", "variableThickness",
+      "junctionPolicy", "beamCrossSection", "beamDiameter", "extrusionHeight", "sideLength", "variableThickness",
       "booleanUnion", "configJson"
     ];
     const el = Object.fromEntries(ids.map(id => [id, document.getElementById(id)]));
@@ -607,6 +610,7 @@ PAGE = """<!doctype html>
     const nodeMaterialRow = document.getElementById("nodeMaterialRow");
     const junctionPolicyRow = document.getElementById("junctionPolicyRow");
     const mixedJunctionMaterialRow = document.getElementById("mixedJunctionMaterialRow");
+    const extrusionHeightRow = document.getElementById("extrusionHeightRow");
     const buttons = [...document.querySelectorAll("button")];
 
     const defaultMaterials = [
@@ -787,6 +791,9 @@ PAGE = """<!doctype html>
           : el.variableThickness.checked,
         boolean_union: el.booleanUnion.checked
       };
+      if (el.beamCrossSection.value === "square") {
+        geometry.extrusion_height_mm = Number(el.extrusionHeight.value);
+      }
       if (fixedNodeMaterial) {
         geometry.node_material = el.nodeMaterial.value || fallbackMaterial;
       } else {
@@ -833,6 +840,9 @@ PAGE = """<!doctype html>
       if (!job.positions) errors.push("Node positions file is required.");
       if (!job.adjacency) errors.push("Adjacency or edge-list file is required.");
       if (!(config.geometry.beam_diameter_mm > 0)) errors.push("Beam size must be greater than zero.");
+      if (config.geometry.beam_cross_section === "square" && !(config.geometry.extrusion_height_mm > 0)) {
+        errors.push("Extrusion height must be greater than zero.");
+      }
       if (!(config.geometry.cube_side_length_mm > 0)) errors.push("Side length must be greater than zero.");
       if (Object.keys(config.materials).length === 0) errors.push("At least one material is required.");
       if (config.jobs[0].adjacency_format === "edge_list" && el.materialMode.value === "matrix") {
@@ -857,6 +867,7 @@ PAGE = """<!doctype html>
       nodeMaterialRow.classList.toggle("hidden", !fixedNodeMaterial);
       junctionPolicyRow.classList.toggle("hidden", fixedNodeMaterial);
       mixedJunctionMaterialRow.classList.toggle("hidden", fixedNodeMaterial || el.junctionPolicy.value !== "separate");
+      extrusionHeightRow.classList.toggle("hidden", el.beamCrossSection.value !== "square");
       const config = buildConfig();
       if (!jsonDirty || options.forceJson) {
         el.configJson.value = JSON.stringify(config, null, 2);
@@ -895,6 +906,16 @@ PAGE = """<!doctype html>
         ? (geometry.beam_cross_section || geometry.cross_section)
         : "circular";
       el.beamDiameter.value = geometry.beam_diameter_mm || geometry.beam_diameter || 1;
+      el.extrusionHeight.value =
+        geometry.extrusion_height_mm
+        ?? geometry.extrusion_height
+        ?? geometry.extrusion_depth_mm
+        ?? geometry.extrusion_depth
+        ?? geometry.planar_extrusion_height_mm
+        ?? geometry.planar_extrusion_height
+        ?? geometry.planar_extrusion_depth_mm
+        ?? geometry.planar_extrusion_depth
+        ?? el.beamDiameter.value;
       el.sideLength.value = geometry.cube_side_length_mm || geometry.cube_side_length || 1;
       el.nodeMaterialMode.value = geometry.node_material ? "fixed" : "auto";
       el.junctionPolicy.value = ["separate", "dominant"].includes(geometry.junction_policy)

@@ -133,6 +133,7 @@ def _generate_job(
     name = str(job.get("name") or _default_job_name(adjacency_path))
     beam_diameter = float(geometry.get("beam_diameter_mm", geometry.get("beam_diameter", 1.0)))
     beam_cross_section = _beam_cross_section(geometry)
+    extrusion_height = float(_geometry_extrusion_height(geometry, beam_diameter))
     cube_side = float(geometry.get("cube_side_length_mm", geometry.get("cube_side_length", 1.0)))
     variable_thickness = bool(geometry.get("variable_thickness", False))
     adjacency_format = str(job.get("adjacency_format", "auto")).strip().lower().replace("-", "_")
@@ -156,6 +157,8 @@ def _generate_job(
 
     if beam_diameter <= 0:
         raise ValueError("geometry.beam_diameter_mm must be greater than zero.")
+    if beam_cross_section == "square" and extrusion_height <= 0:
+        raise ValueError("geometry.extrusion_height_mm must be greater than zero.")
     if cube_side <= 0:
         raise ValueError("geometry.cube_side_length_mm must be greater than zero.")
     if sections < 3:
@@ -197,7 +200,14 @@ def _generate_job(
         diameter = beam_diameter * edge.weight
         if diameter <= 0:
             continue
-        beam = _create_beam(start, end, diameter, sections=sections, cross_section=beam_cross_section)
+        beam = _create_beam(
+            start,
+            end,
+            diameter,
+            sections=sections,
+            cross_section=beam_cross_section,
+            extrusion_height=extrusion_height,
+        )
         if beam is None:
             continue
         meshes_by_material[edge.material].append(beam)
@@ -206,7 +216,7 @@ def _generate_job(
         incident[edge.source].append((edge.material, edge.weight))
         incident[edge.target].append((edge.material, edge.weight))
 
-    node_reservations = _add_junction_spheres(
+    node_reservations = _add_junction_nodes(
         positions,
         incident,
         meshes_by_material,
@@ -215,6 +225,8 @@ def _generate_job(
         junction_policy=junction_policy,
         mixed_junction_material=mixed_junction_material,
         node_material=node_material,
+        sections=sections,
+        extrusion_height=extrusion_height,
         sphere_subdivisions=sphere_subdivisions,
         node_radius_scale=node_radius_scale,
         node_diameters=node_diameters,
@@ -233,6 +245,7 @@ def _generate_job(
                 node_reservations,
                 sections,
                 beam_cross_section,
+                extrusion_height,
                 material=material,
                 warnings=warnings,
             )
@@ -273,6 +286,7 @@ def _generate_job(
         "warnings": warnings,
         "geometry": {
             "beam_diameter_mm": beam_diameter,
+            "extrusion_height_mm": extrusion_height,
             "beam_cross_section": beam_cross_section,
             "cube_side_length_mm": cube_side,
             "variable_thickness": variable_thickness,
@@ -771,6 +785,22 @@ def _beam_cross_section(geometry: Mapping[str, Any]) -> str:
     return normalized
 
 
+def _geometry_extrusion_height(geometry: Mapping[str, Any], default: float) -> float:
+    for key in (
+        "extrusion_height_mm",
+        "extrusion_height",
+        "extrusion_depth_mm",
+        "extrusion_depth",
+        "planar_extrusion_height_mm",
+        "planar_extrusion_height",
+        "planar_extrusion_depth_mm",
+        "planar_extrusion_depth",
+    ):
+        if key in geometry:
+            return float(geometry[key])
+    return float(default)
+
+
 def _cross_section_enclosing_radius(size: float, cross_section: str) -> float:
     radius = float(size) / 2.0
     if cross_section == "square":
@@ -795,12 +825,72 @@ def _apply_z_axis_alignment(
         mesh.apply_transform(trimesh.transformations.rotation_matrix(angle, axis, point=point))
 
 
+def _is_flat_xy_segment(start_point: np.ndarray, end_point: np.ndarray) -> bool:
+    return abs(float(np.asarray(end_point, dtype=float)[2] - np.asarray(start_point, dtype=float)[2])) < 1e-9
+
+
+def _positions_are_flat_xy(positions: np.ndarray) -> bool:
+    values = np.asarray(positions, dtype=float)
+    if values.ndim != 2 or values.shape[0] == 0 or values.shape[1] < 3:
+        return True
+    return bool(np.allclose(values[:, 2], values[0, 2], atol=1e-9))
+
+
+def _create_flat_square_beam(
+    start_point: np.ndarray,
+    end_point: np.ndarray,
+    beam_width: float,
+    extrusion_height: float,
+) -> Optional[trimesh.Trimesh]:
+    start = np.asarray(start_point, dtype=float)
+    end = np.asarray(end_point, dtype=float)
+    planar_vector = end[:2] - start[:2]
+    planar_length = float(np.linalg.norm(planar_vector))
+    if planar_length < 1e-12:
+        return None
+
+    direction = planar_vector / planar_length
+    normal = np.array([-direction[1], direction[0]])
+    half_width = float(beam_width) / 2.0
+    half_height = float(extrusion_height) / 2.0
+    z_center = (float(start[2]) + float(end[2])) / 2.0
+    z_min = z_center - half_height
+    z_max = z_center + half_height
+
+    bottom_xy = np.array([
+        start[:2] + normal * half_width,
+        end[:2] + normal * half_width,
+        end[:2] - normal * half_width,
+        start[:2] - normal * half_width,
+    ])
+
+    vertices = np.vstack([
+        np.column_stack([bottom_xy, np.full(4, z_min)]),
+        np.column_stack([bottom_xy, np.full(4, z_max)]),
+    ])
+    faces = np.array([
+        [0, 1, 2], [0, 2, 3],
+        [4, 6, 5], [4, 7, 6],
+        [0, 4, 5], [0, 5, 1],
+        [1, 5, 6], [1, 6, 2],
+        [2, 6, 7], [2, 7, 3],
+        [3, 7, 4], [3, 4, 0],
+    ])
+
+    mesh = trimesh.Trimesh(vertices=vertices, faces=faces, process=False)
+    mesh.merge_vertices()
+    if mesh.is_watertight and mesh.volume < 0:
+        mesh.invert()
+    return mesh
+
+
 def _create_beam(
     start_point: np.ndarray,
     end_point: np.ndarray,
     beam_diameter: float,
     sections: int,
     cross_section: str = "circular",
+    extrusion_height: Optional[float] = None,
 ) -> Optional[trimesh.Trimesh]:
     vector = np.asarray(end_point, dtype=float) - np.asarray(start_point, dtype=float)
     length = float(np.linalg.norm(vector))
@@ -809,6 +899,9 @@ def _create_beam(
     direction = vector / length
 
     if cross_section == "square":
+        if _is_flat_xy_segment(start_point, end_point):
+            height = beam_diameter if extrusion_height is None else float(extrusion_height)
+            return _create_flat_square_beam(start_point, end_point, beam_diameter, height)
         beam = mesh_box(extents=[beam_diameter, beam_diameter, length])
     else:
         beam = cylinder(radius=beam_diameter / 2.0, height=length, sections=sections)
@@ -819,7 +912,18 @@ def _create_beam(
     return beam
 
 
-def _add_junction_spheres(
+def _create_flat_node_disk(
+    center: Tuple[float, float, float],
+    radius: float,
+    height: float,
+    sections: int,
+) -> trimesh.Trimesh:
+    disk = cylinder(radius=radius, height=height, sections=sections)
+    disk.apply_translation(center)
+    return disk
+
+
+def _add_junction_nodes(
     positions: np.ndarray,
     incident: Mapping[int, List[Tuple[str, float]]],
     meshes_by_material: Dict[str, List[trimesh.Trimesh]],
@@ -828,17 +932,24 @@ def _add_junction_spheres(
     junction_policy: str,
     mixed_junction_material: str,
     node_material: Optional[str],
+    sections: int,
+    extrusion_height: float,
     sphere_subdivisions: int,
     node_radius_scale: float,
     node_diameters: Optional[np.ndarray] = None,
 ) -> Dict[int, NodeReservation]:
     node_reservations = {}
+    use_flat_disks = beam_cross_section == "square" and _positions_are_flat_xy(positions)
     for idx, material_weights in incident.items():
         if not material_weights:
             continue
         max_weight = max(weight for _, weight in material_weights)
+        max_beam_size = beam_diameter * max_weight
         if node_diameters is None:
-            radius = _cross_section_enclosing_radius(beam_diameter * max_weight, beam_cross_section) * node_radius_scale
+            if use_flat_disks:
+                radius = max_beam_size / 2.0 * node_radius_scale
+            else:
+                radius = _cross_section_enclosing_radius(max_beam_size, beam_cross_section) * node_radius_scale
         else:
             radius = float(node_diameters[idx]) / 2.0
         if radius <= 0:
@@ -855,12 +966,15 @@ def _add_junction_spheres(
             target_materials = [_dominant_material(material_weights)]
 
         for material in target_materials:
-            sphere = icosphere(radius=radius, subdivisions=sphere_subdivisions)
             center = tuple(float(value) for value in positions[idx][:3])
-            sphere.apply_translation(center)
-            meshes_by_material[material].append(sphere)
+            if use_flat_disks:
+                node_mesh = _create_flat_node_disk(center, radius, extrusion_height, sections)
+            else:
+                node_mesh = icosphere(radius=radius, subdivisions=sphere_subdivisions)
+                node_mesh.apply_translation(center)
+            meshes_by_material[material].append(node_mesh)
             if node_material and material == node_material:
-                node_reservations[idx] = NodeReservation(sphere, radius, center)
+                node_reservations[idx] = NodeReservation(node_mesh, radius, center)
     return node_reservations
 
 
@@ -871,6 +985,7 @@ def _apply_node_material_priority(
     node_reservations: Mapping[int, NodeReservation],
     sections: int,
     beam_cross_section: str,
+    extrusion_height: float,
     material: Optional[str] = None,
     warnings: Optional[List[str]] = None,
 ) -> List[trimesh.Trimesh]:
@@ -894,6 +1009,7 @@ def _apply_node_material_priority(
             target_reservation.radius,
             sections=sections,
             cross_section=beam_cross_section,
+            extrusion_height=extrusion_height,
         )
         if cut_mesh is not None and not cut_mesh.is_empty:
             protected.append(cut_mesh)
@@ -918,6 +1034,7 @@ def _create_node_cut_beam(
     target_radius: float,
     sections: int,
     cross_section: str = "circular",
+    extrusion_height: Optional[float] = None,
 ) -> Optional[trimesh.Trimesh]:
     vector = np.asarray(end_point, dtype=float) - np.asarray(start_point, dtype=float)
     length = float(np.linalg.norm(vector))
@@ -927,11 +1044,11 @@ def _create_node_cut_beam(
     if cross_section == "square":
         return _create_node_cut_square_beam(
             start_point,
-            direction,
-            length,
+            end_point,
             beam_diameter,
             source_radius,
             target_radius,
+            beam_diameter if extrusion_height is None else float(extrusion_height),
         )
 
     radius = beam_diameter / 2.0
@@ -1008,13 +1125,30 @@ def _create_node_cut_beam(
 
 def _create_node_cut_square_beam(
     start_point: np.ndarray,
-    direction: np.ndarray,
-    length: float,
-    beam_side: float,
+    end_point: np.ndarray,
+    beam_width: float,
     source_radius: float,
     target_radius: float,
+    extrusion_height: float,
 ) -> Optional[trimesh.Trimesh]:
-    enclosing_radius = _cross_section_enclosing_radius(beam_side, "square")
+    vector = np.asarray(end_point, dtype=float) - np.asarray(start_point, dtype=float)
+    length = float(np.linalg.norm(vector))
+    if length < 1e-12:
+        return None
+    direction = vector / length
+
+    if _is_flat_xy_segment(start_point, end_point):
+        half_width = float(beam_width) / 2.0
+        source_offset = max(float(source_radius), half_width)
+        target_offset = max(float(target_radius), half_width)
+        cut_length = length - source_offset - target_offset
+        if cut_length <= 1e-12:
+            return None
+        cut_start = np.asarray(start_point, dtype=float) + direction * source_offset
+        cut_end = np.asarray(end_point, dtype=float) - direction * target_offset
+        return _create_flat_square_beam(cut_start, cut_end, beam_width, extrusion_height)
+
+    enclosing_radius = _cross_section_enclosing_radius(beam_width, "square")
     source_radius = max(float(source_radius), enclosing_radius)
     target_radius = max(float(target_radius), enclosing_radius)
     source_offset = math.sqrt(max(source_radius * source_radius - enclosing_radius * enclosing_radius, 0.0))
@@ -1023,7 +1157,7 @@ def _create_node_cut_square_beam(
     if cut_length <= 1e-12:
         return None
 
-    mesh = mesh_box(extents=[beam_side, beam_side, cut_length])
+    mesh = mesh_box(extents=[beam_width, beam_width, cut_length])
     mesh.apply_translation([0.0, 0.0, source_offset + cut_length / 2.0])
     _apply_z_axis_alignment(mesh, direction, [0, 0, 0])
     mesh.apply_translation(np.asarray(start_point, dtype=float))

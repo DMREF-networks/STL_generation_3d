@@ -1,3 +1,4 @@
+import math
 import pickle
 import tempfile
 import unittest
@@ -9,9 +10,10 @@ import numpy as np
 import trimesh
 
 from config_to_stl import generate_from_config_data
-from config_to_stl import _add_junction_spheres
+from config_to_stl import _add_junction_nodes
 from config_to_stl import _combine_meshes
 from config_to_stl import _create_beam
+from config_to_stl import _create_node_cut_beam
 from config_to_stl import _load_edges
 from config_to_stl import _load_node_diameters
 
@@ -316,7 +318,7 @@ class EdgeListDefaultsTest(unittest.TestCase):
         ])
         meshes_by_material = defaultdict(list)
 
-        reservations = _add_junction_spheres(
+        reservations = _add_junction_nodes(
             positions,
             {
                 0: [("beam", 1.0)],
@@ -328,6 +330,8 @@ class EdgeListDefaultsTest(unittest.TestCase):
             junction_policy="separate",
             mixed_junction_material="mixed",
             node_material="node",
+            sections=16,
+            extrusion_height=10.0,
             sphere_subdivisions=0,
             node_radius_scale=99.0,
             node_diameters=np.array([0.4, 0.8]),
@@ -336,6 +340,65 @@ class EdgeListDefaultsTest(unittest.TestCase):
         self.assertEqual(sorted(reservations), [0, 1])
         self.assertAlmostEqual(reservations[0].radius, 0.2)
         self.assertAlmostEqual(reservations[1].radius, 0.4)
+
+    def test_square_flat_junctions_are_extruded_disks(self):
+        positions = np.array([
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+        ])
+        meshes_by_material = defaultdict(list)
+
+        reservations = _add_junction_nodes(
+            positions,
+            {
+                0: [("beam", 1.0)],
+                1: [("beam", 2.0)],
+            },
+            meshes_by_material,
+            beam_diameter=0.5,
+            beam_cross_section="square",
+            junction_policy="separate",
+            mixed_junction_material="mixed",
+            node_material="node",
+            sections=32,
+            extrusion_height=0.25,
+            sphere_subdivisions=2,
+            node_radius_scale=1.0,
+        )
+
+        self.assertEqual(sorted(reservations), [0, 1])
+        np.testing.assert_allclose(reservations[0].mesh.extents, [0.5, 0.5, 0.25], atol=1e-9)
+        np.testing.assert_allclose(reservations[1].mesh.extents, [1.0, 1.0, 0.25], atol=1e-9)
+
+    def test_square_flat_junction_diameters_control_disk_xy_size_not_height(self):
+        positions = np.array([
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+        ])
+        meshes_by_material = defaultdict(list)
+
+        reservations = _add_junction_nodes(
+            positions,
+            {
+                0: [("beam", 1.0)],
+                1: [("beam", 1.0)],
+            },
+            meshes_by_material,
+            beam_diameter=0.5,
+            beam_cross_section="square",
+            junction_policy="separate",
+            mixed_junction_material="mixed",
+            node_material="node",
+            sections=32,
+            extrusion_height=0.25,
+            sphere_subdivisions=2,
+            node_radius_scale=1.0,
+            node_diameters=np.array([2.0, 2.0]),
+        )
+
+        self.assertEqual(sorted(reservations), [0, 1])
+        np.testing.assert_allclose(reservations[0].mesh.extents, [2.0, 2.0, 0.25], atol=1e-9)
+        np.testing.assert_allclose(reservations[1].mesh.extents, [2.0, 2.0, 0.25], atol=1e-9)
 
     def test_square_beam_cross_section_uses_square_prism(self):
         beam = _create_beam(
@@ -351,6 +414,47 @@ class EdgeListDefaultsTest(unittest.TestCase):
         self.assertTrue(beam.is_volume)
         np.testing.assert_allclose(beam.extents, [0.5, 0.5, 2.0], atol=1e-9)
         self.assertAlmostEqual(beam.volume, 0.5, places=9)
+
+    def test_flat_angled_square_beam_is_vertically_extruded(self):
+        width = 0.5
+        height = 0.2
+        beam = _create_beam(
+            np.array([0.0, 0.0, 0.0]),
+            np.array([1.0, 1.0, 0.0]),
+            beam_diameter=width,
+            sections=16,
+            cross_section="square",
+            extrusion_height=height,
+        )
+
+        self.assertIsNotNone(beam)
+        self.assertTrue(beam.is_watertight)
+        self.assertTrue(beam.is_volume)
+        z_values = beam.vertices[:, 2]
+        self.assertAlmostEqual(float(z_values.min()), -height / 2.0, places=9)
+        self.assertAlmostEqual(float(z_values.max()), height / 2.0, places=9)
+        self.assertAlmostEqual(beam.volume, math.sqrt(2.0) * width * height, places=9)
+
+    def test_flat_angled_square_node_cut_beam_is_vertically_extruded(self):
+        width = 0.5
+        height = 0.2
+        beam = _create_node_cut_beam(
+            np.array([0.0, 0.0, 0.0]),
+            np.array([2.0, 2.0, 0.0]),
+            beam_diameter=width,
+            source_radius=0.5,
+            target_radius=0.5,
+            sections=16,
+            cross_section="square",
+            extrusion_height=height,
+        )
+
+        self.assertIsNotNone(beam)
+        self.assertTrue(beam.is_watertight)
+        self.assertTrue(beam.is_volume)
+        z_values = beam.vertices[:, 2]
+        self.assertAlmostEqual(float(z_values.min()), -height / 2.0, places=9)
+        self.assertAlmostEqual(float(z_values.max()), height / 2.0, places=9)
 
     def test_boolean_union_failure_falls_back_to_concatenation(self):
         beam_a = _create_beam(
