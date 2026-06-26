@@ -7,7 +7,6 @@ the local filesystem reads/writes and calls the STL generation code.
 from __future__ import annotations
 
 import argparse
-import cgi
 import json
 import mimetypes
 import re
@@ -15,10 +14,12 @@ import shutil
 import subprocess
 import traceback
 import webbrowser
+from email.parser import BytesParser
+from email.policy import default as email_policy
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Mapping, Optional, Tuple
 from urllib.parse import parse_qs, urlparse
 
 from config_to_stl import generate_from_config_data
@@ -1265,31 +1266,21 @@ class Handler(BaseHTTPRequestHandler):
         if not content_type.lower().startswith("multipart/form-data"):
             raise ValueError("Upload must use multipart/form-data.")
 
-        form = cgi.FieldStorage(
-            fp=self.rfile,
-            headers=self.headers,
-            environ={
-                "REQUEST_METHOD": "POST",
-                "CONTENT_TYPE": content_type,
-                "CONTENT_LENGTH": self.headers.get("Content-Length", "0"),
-            },
-        )
-        if "file" not in form:
-            raise ValueError("Upload did not include a file.")
-        file_item = form["file"]
-        if isinstance(file_item, list):
-            file_item = file_item[0]
-        filename = getattr(file_item, "filename", "")
+        length = int(self.headers.get("Content-Length", "0"))
+        body = self.rfile.read(length)
+        parts = _multipart_parts(content_type, body)
+        kind = _safe_upload_kind(_multipart_text(parts, "kind") or "file")
+        file_part = _multipart_file(parts, "file")
+        filename = file_part.get_filename("")
         if not filename:
             raise ValueError("Upload did not include a filename.")
 
-        kind = _safe_upload_kind(form.getfirst("kind", "file"))
         upload_dir = (Path.cwd() / UPLOAD_ROOT / kind).resolve()
         upload_dir.mkdir(parents=True, exist_ok=True)
         output_path = _next_upload_path(upload_dir, _safe_upload_filename(filename))
 
         with output_path.open("wb") as f:
-            shutil.copyfileobj(file_item.file, f)
+            f.write(file_part.get_payload(decode=True) or b"")
 
         self._send_json({
             "path": str(output_path),
@@ -1350,6 +1341,36 @@ def _resolve_path(value: Any) -> Path:
     if not path.is_absolute():
         path = Path.cwd() / path
     return path.resolve()
+
+
+def _multipart_parts(content_type: str, body: bytes) -> Dict[str, Any]:
+    header = f"Content-Type: {content_type}\r\nMIME-Version: 1.0\r\n\r\n".encode("utf-8")
+    message = BytesParser(policy=email_policy).parsebytes(header + body)
+    if not message.is_multipart():
+        raise ValueError("Upload must contain multipart form data.")
+
+    parts = {}
+    for part in message.iter_parts():
+        name = part.get_param("name", header="content-disposition")
+        if name and name not in parts:
+            parts[name] = part
+    return parts
+
+
+def _multipart_text(parts: Mapping[str, Any], name: str) -> Optional[str]:
+    part = parts.get(name)
+    if part is None:
+        return None
+    payload = part.get_payload(decode=True) or b""
+    charset = part.get_content_charset() or "utf-8"
+    return payload.decode(charset, errors="replace")
+
+
+def _multipart_file(parts: Mapping[str, Any], name: str) -> Any:
+    part = parts.get(name)
+    if part is None:
+        raise ValueError("Upload did not include a file.")
+    return part
 
 
 def _safe_upload_kind(value: Any) -> str:
