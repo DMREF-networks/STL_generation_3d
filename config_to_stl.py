@@ -923,6 +923,14 @@ def _create_flat_node_disk(
     return disk
 
 
+def _flat_disk_rectangle_offset(node_radius: float, beam_width: float) -> float:
+    half_width = float(beam_width) / 2.0
+    radius = float(node_radius)
+    if radius <= half_width:
+        return 0.0
+    return math.sqrt(max(radius * radius - half_width * half_width, 0.0))
+
+
 def _add_junction_nodes(
     positions: np.ndarray,
     incident: Mapping[int, List[Tuple[str, float]]],
@@ -1138,9 +1146,8 @@ def _create_node_cut_square_beam(
     direction = vector / length
 
     if _is_flat_xy_segment(start_point, end_point):
-        half_width = float(beam_width) / 2.0
-        source_offset = max(float(source_radius), half_width)
-        target_offset = max(float(target_radius), half_width)
+        source_offset = _flat_disk_rectangle_offset(source_radius, beam_width)
+        target_offset = _flat_disk_rectangle_offset(target_radius, beam_width)
         cut_length = length - source_offset - target_offset
         if cut_length <= 1e-12:
             return None

@@ -438,9 +438,11 @@ class EdgeListDefaultsTest(unittest.TestCase):
     def test_flat_angled_square_node_cut_beam_is_vertically_extruded(self):
         width = 0.5
         height = 0.2
+        source = np.array([0.0, 0.0, 0.0])
+        target = np.array([2.0, 2.0, 0.0])
         beam = _create_node_cut_beam(
-            np.array([0.0, 0.0, 0.0]),
-            np.array([2.0, 2.0, 0.0]),
+            source,
+            target,
             beam_diameter=width,
             source_radius=0.5,
             target_radius=0.5,
@@ -455,6 +457,11 @@ class EdgeListDefaultsTest(unittest.TestCase):
         z_values = beam.vertices[:, 2]
         self.assertAlmostEqual(float(z_values.min()), -height / 2.0, places=9)
         self.assertAlmostEqual(float(z_values.max()), height / 2.0, places=9)
+        axis = (target - source) / np.linalg.norm(target - source)
+        projected = (beam.vertices - source) @ axis
+        expected_offset = math.sqrt(0.5 * 0.5 - (width / 2.0) * (width / 2.0))
+        self.assertAlmostEqual(float(projected.min()), expected_offset, places=9)
+        self.assertAlmostEqual(float(projected.max()), np.linalg.norm(target - source) - expected_offset, places=9)
 
     def test_boolean_union_failure_falls_back_to_concatenation(self):
         beam_a = _create_beam(
