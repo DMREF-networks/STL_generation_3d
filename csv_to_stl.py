@@ -495,9 +495,18 @@ def csv_to_stl(inputPath, beam_diameter_in_mm, cube_side_length,
             continue
         pairs.append((path, position_file, output_base))
 
+    generated_files = []
     for adjacency_file, position_file, output_base in pairs:
+        output_file = f"{output_base}.stl"
         process_data("csv", beam_diameter=beam_diameter_in_mm,
                      cube_side_length=cube_side_length,
-                     output_file=f"{output_base}.stl",
+                     output_file=output_file,
                      adjacency_array=adjacency_file,
                      position_array=position_file)
+        if os.path.exists(output_file):
+            generated_files.append(os.path.abspath(output_file))
+        html_file = output_file[:-4] + ".html"
+        if os.path.exists(html_file):
+            generated_files.append(os.path.abspath(html_file))
+
+    return generated_files

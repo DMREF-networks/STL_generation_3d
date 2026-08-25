@@ -1,39 +1,84 @@
-from npy_to_stl import *
-from csv_to_stl import *
+import math
+from pathlib import Path
+
+from csv_to_stl import csv_to_stl
+from npy_to_stl import npy_to_stl
 
 
-file_type = input("Are the files csv or npy? ").lower()
-while not(file_type == "csv") and not(file_type == "npy"):
-    file_type = input("Enter file type again: ")
+def prompt_positive_number(prompt, default=None):
+    while True:
+        response = input(prompt).strip()
+        if response == "" and default is not None:
+            return float(default)
+        try:
+            value = float(response)
+        except ValueError:
+            print("Please enter a number greater than zero.")
+            continue
+        if math.isfinite(value) and value > 0:
+            return value
+        print("Please enter a number greater than zero.")
 
-inputPath = input("Enter input path here: ")  # Example: /Users/sarayukondaveeti/NetworkModels
-diameter = float(input("Enter beam diameter in millimeters: ")) # Example: 2.8
-side = float(input("Enter matrix side length in millimeters: ")) # Example: 80
 
-variable_thickness_resp = input("Use variable beam thickness from adjacency values? [y/N]: ").strip().lower()
-variable_thickness = variable_thickness_resp in ("y", "yes", "true", "1")
+def run(method=None):
+    file_type = input("Are the files csv or npy? ").strip().lower()
+    while file_type not in ("csv", "npy"):
+        file_type = input("Enter file type again: ").strip().lower()
 
-# Method selection. "cylinders" = original 3D cylinder + junction-sphere
-# approach (works for any network). "planar" = merge 2D rectangles + discs
-# with shapely and extrude (flat networks only; robust to thin beams and
-# avoids the junction-gap problem). Press Enter to keep the default.
-method = input("Method [cylinders/planar] (default cylinders): ").strip().lower()
-if method not in ("cylinders", "planar", ""):
-    print(f"Unknown method '{method}', falling back to cylinders.")
-    method = "cylinders"
-if method == "":
-    method = "cylinders"
+    input_path = Path(
+        input("Enter the directory containing paired *_xy and *_adj files: ").strip()
+    ).expanduser()
+    if not input_path.is_dir():
+        if input_path.is_file():
+            print(
+                "Error: the input must be a directory, not an individual file. "
+                f"Try: {input_path.parent}"
+            )
+        else:
+            print(f"Error: input directory does not exist: {input_path}")
+        return 2
 
-extrusion_depth = None
-if method == "planar":
-    resp = input(f"Extrusion depth in millimeters (default = beam diameter = {diameter}): ").strip()
-    extrusion_depth = float(resp) if resp else None
+    diameter = prompt_positive_number("Enter beam diameter in millimeters: ")
+    side = prompt_positive_number("Enter desired model side length in millimeters: ")
 
-if (file_type == "csv"):
-    csv_to_stl(inputPath, diameter, side, method=method,
-               extrusion_depth=extrusion_depth,
-               variable_thickness=variable_thickness)
-elif (file_type == "npy"):
-    npy_to_stl(inputPath, diameter, side, method=method,
-               extrusion_depth=extrusion_depth,
-               variable_thickness=variable_thickness)
+    variable_thickness_resp = input(
+        "Use variable beam thickness from adjacency values? [y/N]: "
+    ).strip().lower()
+    variable_thickness = variable_thickness_resp in ("y", "yes", "true", "1")
+
+    if method is None:
+        method = input("Choose method [cylinders/planar]: ").strip().lower()
+        while method not in ("cylinders", "planar"):
+            method = input("Please enter either cylinders or planar: ").strip().lower()
+
+    extrusion_depth = None
+    if method == "planar":
+        extrusion_depth = prompt_positive_number(
+            f"Extrusion depth in millimeters (default = beam diameter = {diameter}): ",
+            default=diameter,
+        )
+
+    converter = csv_to_stl if file_type == "csv" else npy_to_stl
+    outputs = converter(
+        str(input_path),
+        diameter,
+        side,
+        method=method,
+        extrusion_depth=extrusion_depth,
+        variable_thickness=variable_thickness,
+    )
+    if not outputs:
+        print(
+            f"Error: no matching *_xy.{file_type} and *_adj.{file_type} pairs "
+            f"were found in {input_path.resolve()}."
+        )
+        return 1
+
+    print("Generated files:")
+    for output in outputs:
+        print(f"  {output}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(run())

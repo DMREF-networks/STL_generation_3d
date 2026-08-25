@@ -87,6 +87,6 @@ def npy_to_stl(inputPath, beam_diameter_in_mm, cube_side_length,
         convert_npy_to_csv(inputPath, outputPath,
                            variable_thickness=variable_thickness)
 
-        csv_to_stl(outputPath, beam_diameter_in_mm, cube_side_length,
-                   method=method, extrusion_depth=extrusion_depth,
-                   variable_thickness=variable_thickness)
+        return csv_to_stl(outputPath, beam_diameter_in_mm, cube_side_length,
+                          method=method, extrusion_depth=extrusion_depth,
+                          variable_thickness=variable_thickness)

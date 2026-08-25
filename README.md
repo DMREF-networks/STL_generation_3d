@@ -1,6 +1,6 @@
-# STL Generation 3D
+# STL Generation for 2D and 3D Networks
 
-STL Generation 3D converts network data into 3D-printable STL meshes.
+This project converts 2D and 3D network data into 3D-printable STL meshes.
 Inputs are node positions plus connectivity data, either as CSV files,
 NumPy `.npy` files, or explicit-schema pickle `.pkl` files. Outputs are
 STL files and optional HTML previews.
@@ -52,6 +52,10 @@ Each network needs:
 - an `adj` file containing connectivity
 - optionally, a `node_diameters` file containing one node diameter per node
 
+Pass the converter the **directory containing the pair**, not one of the
+individual files. For example, use `sample_delaunay_2d`, which contains
+`d50_xy.csv` and `d50_adj.csv`.
+
 The interactive converter pairs files by name:
 
 ```text
@@ -96,23 +100,55 @@ saved config to define what extra columns mean. This keeps legacy
 
 ## Standard STL Generation
 
-Run the interactive script:
+For the flat, extruded geometry normally used for 2D configurations, run:
 
 ```bash
-python npyToSTLScript.py
+python generate_2d_stl.py
 ```
 
-The script prompts for:
+This uses rectangular beams and disc junctions in the plane, then extrudes the
+result. It only accepts flat 2D networks.
+
+In Google Colab, run:
+
+```python
+!python generate_2d_stl.py
+```
+
+When prompted for the input directory, enter `sample_delaunay_2d` to run the
+included example.
+
+For cylindrical beams and spherical junctions, run:
+
+```bash
+python generate_3d_stl.py
+```
+
+This works with both 2D and 3D networks. On a 2D network it produces the
+"3D-from-2D" cylindrical geometry, which is different from the usual flat 2D
+output.
+
+The pictures below show the same network generated with the planar and
+cylindrical methods.
+
+| Flat 2D: `generate_2d_stl.py` | Cylindrical 3D: `generate_3d_stl.py` |
+| --- | --- |
+| ![Flat planar-extruded network with rectangular beams and flat junctions](docs/images/planar-2d.png) | ![Network generated with cylindrical beams and spherical junctions](docs/images/cylindrical-3d.png) |
+
+Both scripts prompt for:
 
 - input type: `csv` or `npy`
 - input directory
 - beam diameter in millimeters
-- model side length in millimeters
+- desired model side length in millimeters (the longest dimension after scaling)
 - whether adjacency values should control beam thickness
-- meshing method: `cylinders` or `planar`
 
 Generated STL and HTML preview files are written to the current working
-directory.
+directory, and their paths are printed when generation finishes.
+
+The older combined prompt remains available as `python npyToSTLScript.py`.
+It requires an explicit `cylinders` or `planar` choice rather than selecting a
+default.
 
 ## Browser UI That Generates STLs
 
